@@ -485,3 +485,11 @@ $RECYCLE.BIN/
 .local/
 
 test-data/*.local.txt
+
+# Graphify: keep graph/report/HTML; ignore caches and machine-local state
+graphify-out/cache/
+graphify-out/.graphify_*
+graphify-out/manifest.json
+__pycache__/
+*.py[cod]
+.venv/
