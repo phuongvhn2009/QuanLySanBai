@@ -101,6 +101,7 @@ try
     Check(await Scalar($"SELECT COUNT(*) FROM Don_Dat_San d JOIN Chi_Tiet_Dat_San c ON c.don_dat_san_id=d.id WHERE d.id={order} AND d.trang_thai='HET_HAN' AND c.trang_thai_slot='HET_HAN'")==1,"B04: expiry idempotent, order and slot consistent");
     Check((await With(db=>new BookingService(db,settings).Calendar(court,tomorrow)))!.Slots[0].CanBook,"B04: expired slot available again");
     var midnightOrder=await Book(customer,midnight,tomorrow); Check(midnightOrder>0,"B05: 23:00 to 24:00 booking succeeds");
+    count+=await OperationChecks.Run(options,owner,customer,other,court,slot,facility,Sql);
     // Start actual MVC with the disposable DB to exercise auth, CSRF, binding, errors and views.
     var listener=new System.Net.Sockets.TcpListener(IPAddress.Loopback,0); listener.Start(); var port=((IPEndPoint)listener.LocalEndpoint).Port; listener.Stop();
     var start=new ProcessStartInfo("dotnet") { UseShellExecute=false,CreateNoWindow=true,RedirectStandardOutput=true,RedirectStandardError=true,WorkingDirectory=root };
@@ -142,6 +143,18 @@ try
     await Post("/Account/Login",new() { ["Login"]="0988000001",["Password"]="Cluster4Test123!" },"/Account/Login");
     var ownerHtml=WebUtility.HtmlDecode(await client.GetStringAsync("/CoSo"));
     Check(ownerHtml.Contains("Quản lý sân và cấu hình") && ownerHtml.Contains("Quản lý nhân viên") && !ownerHtml.Contains("href=\"/Admin"),"UI: owner sees own management actions");
+    var listHtml=await client.GetStringAsync("/CoSo/Orders?facilityId="+facility);
+    Check(listHtml.Contains("Đặt tại quầy"),"O06: operational order list renders");
+    Check((int)(await client.GetAsync("/CoSo/Orders/Counter?facilityId="+facility)).StatusCode==200,"O01: counter form renders");
+    var payOrder=await Book(customer,slot,tomorrow.AddDays(16));
+    var payRow=await With(db=>db.DonDatSans.AsNoTracking().SingleAsync(d=>d.Id==payOrder));
+    var key=Guid.NewGuid().ToString("N");
+    var payFields=new Dictionary<string,string> { ["Id"]=payOrder.ToString(),["Version"]=Convert.ToBase64String(payRow.RowVersion),["Amount"]="50000.25",["Method"]="TIEN_MAT",["Purpose"]="COC",["Key"]=key };
+    response=await Post("/CoSo/Orders/Collect",payFields,"/CoSo/Orders/Details/"+payOrder);
+    Check((int)response.StatusCode==302,"O02/O03: HTTP collect and confirm");
+    response=await Post("/CoSo/Orders/Collect",payFields,"/CoSo/Orders/Details/"+payOrder);
+    Check((int)response.StatusCode==302 && await Scalar($"SELECT COUNT(*) FROM Thanh_Toan_Don WHERE don_dat_san_id={payOrder}")==1,"O02: repeated HTTP submit is idempotent");
+    Check((int)(await client.GetAsync("/CoSo/Orders?facilityId="+(facility+999))).StatusCode==302,"O06: foreign facility list forbidden");
     foreach(var path in new[] {"/CoSo/Configuration/Index/"+facility,"/CoSo/Configuration/Facility/"+facility,"/CoSo/Configuration/Court?facilityId="+facility,"/CoSo/Configuration/Policy?facilityId="+facility}) { var r=await client.GetAsync(path); if((int)r.StatusCode!=200) Console.WriteLine(await r.Content.ReadAsStringAsync()); Check((int)r.StatusCode==200,"C01-C06 view renders "+path); }
     await Post("/Account/Logout",new(),"/Account/Profile"); await Post("/Account/Login",new() { ["Login"]="0988000004",["Password"]="Cluster4Test123!" },"/Account/Login");
     var adminHtml=WebUtility.HtmlDecode(await client.GetStringAsync("/Admin"));
