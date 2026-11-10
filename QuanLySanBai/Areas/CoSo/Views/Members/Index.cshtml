@@ -1,0 +1,16 @@
+@using QuanLySanBai.Services
+@inject AccessService Access
+@model List<QuanLySanBai.Models.Entities.ThanhVienCoSo>
+@{ var facilityId=(long)ViewBag.CoSoId; var actor=AccessService.UserId(User); var ownerId=(long)ViewBag.OwnerId; var isOwner=actor==ownerId; var rights=(List<QuanLySanBai.Models.Entities.QuyenHan>)ViewBag.Quyen; var editableRights=new List<QuanLySanBai.Models.Entities.QuyenHan>(); foreach(var q in rights) { if(isOwner || q.MaQuyen!="QUAN_LY_THANH_VIEN" && await Access.HasPermission(actor,facilityId,q.MaQuyen)) editableRights.Add(q); } ViewData["Title"]="Nhân viên"; }
+<div class="page-heading"><div><a href="/CoSo">← Cơ sở của tôi</a><h1 class="mt-3">Quản lý nhân viên</h1><p class="text-muted">Chọn một nhân viên để thay đổi quyền làm việc.</p></div></div>
+<details class="editor-section"><summary>Thêm nhân viên</summary><form asp-action="Add" method="post" class="my-3"><input name="coSoId" value="@facilityId" type="hidden" /><label for="phone">Số điện thoại tài khoản đã đăng ký</label><div class="action-row"><input id="phone" name="phone" required autocomplete="tel" /><button class="btn btn-primary">Thêm vào cơ sở</button></div></form></details>
+@foreach(var m in Model) {
+var readOnly=m.NguoiDungId==actor || m.NguoiDungId==ownerId || m.VaiTroNoiBo=="CHU_SAN" || !isOwner && m.VaiTroNoiBo=="QUAN_LY";
+var role=m.VaiTroNoiBo=="CHU_SAN" ? "Chủ cơ sở" : m.VaiTroNoiBo=="QUAN_LY" ? "Quản lý" : "Nhân viên";
+@if(readOnly) { <article class="card p-3 mb-3"><h2 class="h6 m-0">@m.NguoiDung.HoVaTen @(m.NguoiDungId==actor ? "(Bạn)" : "")</h2><p class="text-muted mb-0 mt-2">@role · @m.NguoiDung.SoDienThoai</p></article> }
+else { <details class="editor-section"><summary>@m.NguoiDung.HoVaTen <span class="role-label">@role</span></summary><p class="text-muted">@m.NguoiDung.SoDienThoai</p>
+<form asp-action="Update" method="post"><input name="coSoId" value="@facilityId" type="hidden" /><input name="memberId" value="@m.Id" type="hidden" />
+@if(isOwner) { <label for="role-@m.Id">Vai trò</label><select id="role-@m.Id" name="vaiTro" class="form-select mb-3"><option value="NHAN_VIEN" selected="@(m.VaiTroNoiBo=="NHAN_VIEN")">Nhân viên</option><option value="QUAN_LY" selected="@(m.VaiTroNoiBo=="QUAN_LY")">Quản lý</option></select> } else { <input name="vaiTro" value="NHAN_VIEN" type="hidden" /> }
+<label class="d-block my-3"><input name="active" type="checkbox" value="true" checked="@m.TrangThaiHoatDong" /> Cho phép làm việc tại cơ sở</label>
+<fieldset><legend class="h6">Quyền được cấp</legend>@foreach(var q in editableRights) { <label class="d-block"><input name="permissions" type="checkbox" value="@q.Id" checked="@m.PhanQuyenThanhViens.Any(p=>p.QuyenHanId==q.Id)" /> @(q.MoTa ?? q.MaQuyen)</label> }</fieldset><button class="btn btn-primary mt-3">Lưu thay đổi</button></form></details> }
+}
