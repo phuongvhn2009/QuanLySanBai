@@ -1,0 +1,10 @@
+@model QuanLySanBai.ViewModels.FacilityForm
+<h1>@(Model.Id==0 ? "Đăng ký cơ sở" : "Sửa cơ sở")</h1>
+<p>Cơ sở mới chờ Admin duyệt. Đổi tên hoặc địa chỉ sẽ yêu cầu duyệt lại.</p>
+<form method="post" class="col-lg-7"><div asp-validation-summary="All" class="text-danger"></div><input asp-for="Id" type="hidden" />
+<div class="mb-3"><label asp-for="Name"></label><input asp-for="Name" class="form-control" /></div>
+<div class="mb-3"><label asp-for="Address"></label><input asp-for="Address" class="form-control" /></div>
+<div class="mb-3"><label asp-for="Phone"></label><input asp-for="Phone" class="form-control" /></div>
+<div class="mb-3"><label asp-for="Open"></label><input asp-for="Open" type="time" class="form-control" /></div>
+<div class="mb-3"><label asp-for="Close"></label><input asp-for="Close" type="time" class="form-control" /></div>
+<label><input asp-for="Active" /> Đang hoạt động</label><button class="btn btn-primary d-block mt-3">Lưu cơ sở</button></form>

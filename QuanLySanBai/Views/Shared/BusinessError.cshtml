@@ -1,0 +1,5 @@
+@model string
+@{ ViewData["Title"]="Không thể thực hiện"; }
+<h1>Không thể thực hiện thao tác</h1><div class="alert alert-warning" role="alert">@Model</div>
+<p>Dữ liệu chưa được lưu. Kiểm tra cấu hình hoặc tải lại trước khi thử lại.</p>
+<button class="btn btn-secondary" onclick="history.back()">Quay lại</button> <a href="/">Trang chủ</a>

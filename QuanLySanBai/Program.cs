@@ -6,13 +6,15 @@ using QuanLySanBai.Data;
 using QuanLySanBai.Models.Entities;
 using QuanLySanBai.Services;
 
-var builder = WebApplication.CreateBuilder(args);
+var builder = WebApplication.CreateBuilder(args.Where(a=>a!="--seed-demo").ToArray());
 
 // Add services to the container.
-builder.Services.AddControllersWithViews(o => { o.Filters.Add(new AutoValidateAntiforgeryTokenAttribute());  });
+builder.Services.AddControllersWithViews(o => { o.Filters.Add(new AutoValidateAntiforgeryTokenAttribute()); o.Filters.Add<BusinessErrorFilter>(); });
 builder.Services.AddDbContext<QuanLySanBaiContext>(o => o.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 builder.Services.AddScoped<IPasswordHasher<NguoiDung>, PasswordHasher<NguoiDung>>();
 builder.Services.AddScoped<AccessService>();
+builder.Services.AddScoped<FacilityService>();
+builder.Services.AddScoped<DevelopmentSeeder>();
 
 builder.Services.AddScoped<LiveCookieEvents>();
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme).AddCookie(o => {
@@ -28,6 +30,17 @@ builder.Services.AddAuthorization();
 
 var app = builder.Build();
 
+if(args.Contains("--seed-demo"))
+{
+    if(!app.Environment.IsDevelopment()) throw new InvalidOperationException("Demo seed is allowed only in Development.");
+    using var scope=app.Services.CreateScope();
+    var report=await scope.ServiceProvider.GetRequiredService<DevelopmentSeeder>().Seed();
+    var dir=Path.Combine(app.Environment.ContentRootPath,"..",".local"); Directory.CreateDirectory(dir);
+    var path=Path.Combine(dir,"demo-accounts.txt");
+    if(!File.Exists(path)) await File.WriteAllTextAsync(path,report);
+    Console.WriteLine("Demo ready. Credentials: "+Path.GetFullPath(path));
+    return;
+}
 
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())

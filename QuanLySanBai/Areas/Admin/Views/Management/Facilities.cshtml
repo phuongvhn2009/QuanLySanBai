@@ -1,0 +1,8 @@
+@model List<QuanLySanBai.Models.Entities.CoSo>
+@{ ViewData["Title"]="Duyệt cơ sở"; }
+<div class="page-heading"><div><h1>Duyệt cơ sở</h1><p class="text-muted">Kiểm tra thông tin cơ sở trước khi cho phép nhận đặt sân.</p></div></div>
+@if(Model.Count==0) { <div class="empty-state">Chưa có cơ sở cần quản lý.</div> }
+@foreach(var c in Model.OrderBy(c=>c.TrangThaiDuyet=="CHO_DUYET" ? 0 : 1)) { <article class="card p-4 mb-3"><div class="page-heading mb-2"><h2 class="h5 m-0">@c.TenCoSo</h2><span class="status-label">@(c.TrangThaiDuyet=="DA_DUYET" ? "Đã duyệt" : c.TrangThaiDuyet=="TU_CHOI" ? "Đã từ chối" : "Chờ duyệt")</span></div><p>@c.DiaChi</p><p class="text-muted">Chủ cơ sở: @c.ChuSoHuu.HoVaTen · @c.ChuSoHuu.SoDienThoai</p><div class="action-row">
+@if(c.TrangThaiDuyet!="DA_DUYET") { <form asp-action="Review" method="post"><input name="id" value="@c.Id" type="hidden" /><input name="decision" value="DA_DUYET" type="hidden" /><button class="btn btn-primary">Duyệt cơ sở</button></form> }
+@if(c.TrangThaiDuyet!="TU_CHOI") { <form asp-action="Review" method="post" data-confirm="Từ chối cơ sở này? Cơ sở sẽ không được nhận đặt sân mới."><input name="id" value="@c.Id" type="hidden" /><input name="decision" value="TU_CHOI" type="hidden" /><button class="btn btn-outline-danger">Từ chối cơ sở</button></form> }
+</div></article> }
