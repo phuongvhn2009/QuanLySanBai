@@ -262,6 +262,7 @@ CREATE TABLE [dbo].[Lich_Khoa_San] (
 
 -- Don_Dat_San
 CREATE TABLE [dbo].[Don_Dat_San] (
+    [row_version] rowversion NOT NULL,
     [id] bigint IDENTITY(1,1) NOT NULL CONSTRAINT [PK_Don_Dat_San] PRIMARY KEY,
     [ma_dat_san] nvarchar(30) NOT NULL CONSTRAINT [DF_Don_Dat_San_ma_dat_san] DEFAULT (LEFT(REPLACE(CONVERT(nvarchar(36), NEWID()), N'-', N''), 30)),
     [nguoi_dung_id] bigint NULL,
