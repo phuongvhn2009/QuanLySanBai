@@ -15,7 +15,9 @@ builder.Services.AddScoped<IPasswordHasher<NguoiDung>, PasswordHasher<NguoiDung>
 builder.Services.AddScoped<AccessService>();
 builder.Services.AddScoped<FacilityService>();
 builder.Services.AddScoped<DevelopmentSeeder>();
-
+builder.Services.AddScoped<BookingService>();
+builder.Services.AddOptions<QuanLySanBai.ViewModels.BookingOptions>().BindConfiguration("Booking").Validate(o=>o.HoldMinutes is >=1 and <=60 && o.ExpiryIntervalSeconds is >=5 and <=300,"Invalid booking options").ValidateOnStart();
+builder.Services.AddHostedService<HoldExpiryWorker>();
 builder.Services.AddScoped<LiveCookieEvents>();
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme).AddCookie(o => {
     o.LoginPath = "/Account/Login";

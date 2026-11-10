@@ -13,9 +13,12 @@ public class HomeController : Controller
         _logger = logger;
     }
 
-    public IActionResult Index()
+    public async Task<IActionResult> Index([FromServices] QuanLySanBai.Data.QuanLySanBaiContext db)
     {
-        return View();
+        if(User.IsInRole("ADMIN")) return RedirectToAction("Index","Home",new { area="Admin" });
+        var id=QuanLySanBai.Services.AccessService.UserId(User);
+        if(id>0 && await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.AnyAsync(db.CoSos,c=>c.ChuSoHuuId==id || c.ThanhVienCoSos.Any(m=>m.NguoiDungId==id && m.TrangThaiHoatDong))) return RedirectToAction("Index","Home",new { area="CoSo" });
+        return RedirectToAction("Index","Courts");
     }
 
     public IActionResult Privacy()
