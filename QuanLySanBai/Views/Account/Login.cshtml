@@ -1,0 +1,11 @@
+@model QuanLySanBai.ViewModels.LoginModel
+@{ ViewData["Title"] = "Đăng nhập"; }
+<h1>Đăng nhập</h1>
+<form method="post" class="col-md-6">
+<div asp-validation-summary="All" class="text-danger" role="alert"></div>
+<input asp-for="ReturnUrl" type="hidden" />
+<div class="mb-3"><label asp-for="Login"></label><input asp-for="Login" class="form-control" autocomplete="username" /></div>
+<div class="mb-3"><label asp-for="Password"></label><input asp-for="Password" class="form-control" autocomplete="current-password" /></div>
+<div class="mb-3"><input asp-for="RememberMe" /><label asp-for="RememberMe"></label></div>
+<button class="btn btn-primary">Đăng nhập</button> <a asp-action="Register">Tạo tài khoản</a>
+</form>

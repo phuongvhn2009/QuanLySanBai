@@ -1,0 +1,6 @@
+<nav class="navbar app-nav"><div class="container"><a class="navbar-brand" href="/">Sân Bãi</a><div class="action-row">
+@if(User.Identity?.IsAuthenticated==true) {
+@if(User.IsInRole("ADMIN")) { <a href="/Admin">Quản trị</a> }
+<a href="/CoSo">Cơ sở của tôi</a><a href="/Account/Profile">Hồ sơ cá nhân</a><form action="/Account/Logout" method="post">@Html.AntiForgeryToken()<button class="btn btn-outline-secondary">Đăng xuất</button></form>
+} else { <a href="/Account/Login">Đăng nhập</a><a href="/Account/Register">Tạo tài khoản</a> }
+</div></div></nav>

@@ -1,0 +1,10 @@
+@model QuanLySanBai.ViewModels.RegisterModel
+@{ ViewData["Title"] = "Đăng ký"; }
+<h1>Đăng ký tài khoản</h1>
+<form method="post" class="col-md-6">
+<div asp-validation-summary="All" class="text-danger" role="alert"></div>
+<partial name="_ProfileFields" model="Model" />
+<div class="mb-3"><label asp-for="Password"></label><input asp-for="Password" class="form-control" autocomplete="new-password" /><span asp-validation-for="Password" class="text-danger"></span></div>
+<div class="mb-3"><label asp-for="ConfirmPassword"></label><input asp-for="ConfirmPassword" class="form-control" autocomplete="new-password" /><span asp-validation-for="ConfirmPassword" class="text-danger"></span></div>
+<button class="btn btn-primary">Đăng ký</button> <a asp-action="Login">Đã có tài khoản? Đăng nhập</a>
+</form>
