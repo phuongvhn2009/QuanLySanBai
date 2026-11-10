@@ -1,0 +1,2 @@
+@model List<QuanLySanBai.Models.Entities.DonDatSan>
+<h1>Đơn của tôi</h1><p>Hiển thị 100 đơn gần nhất.</p>@foreach(var d in Model) { <div class="card p-3 mb-2"><a asp-action="Details" asp-route-id="@d.Id">@d.MaDatSan</a><p>@d.TrangThai · @d.TongTienPhaiTra?.ToString("N0") đ</p></div> }

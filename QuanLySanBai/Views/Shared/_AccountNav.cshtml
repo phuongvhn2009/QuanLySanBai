@@ -24,6 +24,8 @@
 <a class="nav-link @(path.Contains("Catalog") ? "active" : "")" href="/Admin/Catalog">Danh mục</a>
 } else {
 @if(hasFacilities) { <a class="nav-link @(path.StartsWith("/CoSo") ? "active" : "")" href="/CoSo">@(owner ? "Quản lý cơ sở" : "Cơ sở làm việc")</a> }
+<a class="nav-link @(path.StartsWith("/Courts") ? "active" : "")" href="/Courts">Tìm sân</a>
+@if(signedIn) { <a class="nav-link @(path.StartsWith("/Bookings") ? "active" : "")" href="/Bookings">Lịch đặt của tôi</a> }
 }
 </div>
 @if(signedIn) {

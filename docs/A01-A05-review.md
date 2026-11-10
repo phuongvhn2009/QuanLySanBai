@@ -1,6 +1,6 @@
 # A01–A05: tài khoản và phân quyền
 
-Nhánh: `MA-TaiKhoanPhanQuyen`. Thay đổi đang ở working tree, chưa commit/push.
+Nhánh: `MA-TaiKhoanPhanQuyen`. Thay đổi đang ở working tree, đã commit/push và merge theo cụm, xem Git log.
 
 ## Chức năng
 
