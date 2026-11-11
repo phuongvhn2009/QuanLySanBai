@@ -31,6 +31,7 @@ public class HoursForm
 }
 public class SlotForm
 {
+    public int Id { get; set; }
     public long FacilityId { get; set; }
     public TimeOnly Start { get; set; } = new(6,0);
     public TimeOnly End { get; set; } = new(7,0);

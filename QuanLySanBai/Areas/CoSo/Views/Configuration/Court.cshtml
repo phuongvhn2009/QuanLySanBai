@@ -1,5 +1,11 @@
 @model QuanLySanBai.ViewModels.CourtForm
-<h1>Cấu hình sân</h1><form method="post" class="col-lg-7"><div asp-validation-summary="All" class="text-danger"></div><input asp-for="Id" type="hidden" /><input asp-for="FacilityId" type="hidden" />
+@{ ViewData["Title"] = Model.Id == 0 ? "Thêm sân" : "Cấu hình sân"; }
+<h1>@ViewData["Title"]</h1><form method="post" class="col-lg-7"><div asp-validation-summary="All" class="text-danger"></div><input asp-for="Id" type="hidden" /><input asp-for="FacilityId" type="hidden" />
 <label asp-for="Name"></label><input asp-for="Name" class="form-control mb-3" />
 <label asp-for="TypeId"></label><select asp-for="TypeId" class="form-select mb-3">@foreach(var t in (List<QuanLySanBai.Models.Entities.LoaiSan>)ViewBag.Types) { <option value="@t.Id">@t.MonTheThao.TenMon — @t.TenLoai</option> }</select>
-<label class="d-block"><input asp-for="Active" /> Đang hoạt động</label><label class="d-block"><input asp-for="Maintenance" /> Bảo trì</label><button class="btn btn-primary mt-3">Lưu sân</button></form>
+<label class="d-block"><input asp-for="Active" /> Đang hoạt động</label><label class="d-block"><input asp-for="Maintenance" /> Bảo trì</label>
+<div class="action-row mt-3">
+    <button class="btn btn-primary" type="submit">Lưu sân</button>
+    <a asp-action="Index" asp-route-id="@Model.FacilityId" class="btn btn-outline-secondary">Quay lại</a>
+</div>
+</form>

@@ -4,7 +4,7 @@
 <div class="page-heading"><div><h1>@(owner ? "Quản lý cơ sở" : "Cơ sở làm việc")</h1><p class="text-muted">Chỉ hiển thị thao tác bạn được cấp quyền.</p></div>@if(owner) { <a class="btn btn-primary" href="/CoSo/Configuration/Facility">Thêm cơ sở</a> }</div>
 @if(Model.Count==0) { <div class="empty-state"><h2 class="h5">Bạn chưa có cơ sở</h2><p>Đăng ký cơ sở kinh doanh để bắt đầu quản lý sân.</p><a class="btn btn-primary" href="/CoSo/Configuration/Facility">Đăng ký cơ sở</a></div> }
 <div class="row g-3">@foreach(var c in Model) { <div class="col-md-6"><article class="card p-4 h-100"><h2 class="h5">@c.TenCoSo</h2><p class="text-muted">@c.DiaChi</p><p><span class="status-label">@(c.TrangThaiDuyet=="DA_DUYET" ? "Đã duyệt" : c.TrangThaiDuyet=="TU_CHOI" ? "Từ chối" : "Chờ duyệt")</span></p><div class="action-row mt-auto">
-@if(c.ChuSoHuuId==actor) { <a class="btn btn-primary" href="/CoSo/Configuration?id=@c.Id">Quản lý sân và cấu hình</a> }
+@if(c.ChuSoHuuId==actor) { <a class="btn btn-primary" asp-controller="Configuration" asp-action="Index" asp-route-id="@c.Id">Quản lý sân và cấu hình</a> }
 @if(manages.Contains(c.Id)) { <a class="btn btn-outline-primary" asp-controller="Members" asp-action="Index" asp-route-coSoId="@c.Id">Quản lý nhân viên</a> }
 @if(c.ChuSoHuuId!=actor && !manages.Contains(c.Id)) { <p class="text-muted mb-0">Bạn chưa được cấp quyền quản lý nhân viên. Liên hệ chủ cơ sở nếu cần.</p> }
 </div></article></div> }</div>

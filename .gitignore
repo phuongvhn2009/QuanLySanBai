@@ -485,3 +485,6 @@ $RECYCLE.BIN/
 .local/
 
 test-data/*.local.txt
+
+.playwright-mcp/
+
