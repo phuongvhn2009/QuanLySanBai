@@ -53,7 +53,24 @@ public class FacilityService(QuanLySanBaiContext db)
     {
         await Owned(actor, form.FacilityId);
         if (!VietnamTime.ValidHours(form.Start, form.End)) throw new BusinessException("Khung giờ không hợp lệ; 00:00 ở giờ kết thúc nghĩa là 24:00.");
-        db.KhungGioMacDinhs.Add(new KhungGioMacDinh { CoSoId = form.FacilityId, GioBatDau = form.Start, GioKetThuc = form.End });
+        if (form.Id == 0)
+        {
+            db.KhungGioMacDinhs.Add(new KhungGioMacDinh { CoSoId = form.FacilityId, GioBatDau = form.Start, GioKetThuc = form.End });
+        }
+        else
+        {
+            var slot = await db.KhungGioMacDinhs.SingleOrDefaultAsync(k => k.Id == form.Id && k.CoSoId == form.FacilityId) ?? throw new FacilityAccessException();
+            slot.GioBatDau = form.Start; slot.GioKetThuc = form.End;
+        }
+        await db.SaveChangesAsync();
+    }
+    public async Task DeleteSlot(long actor, long facilityId, int id)
+    {
+        await Owned(actor, facilityId);
+        var slot = await db.KhungGioMacDinhs.SingleOrDefaultAsync(k => k.Id == id && k.CoSoId == facilityId) ?? throw new FacilityAccessException();
+        if (await db.BangGia.AnyAsync(p => p.KhungGioId == id) || await db.ChiTietDatSans.AnyAsync(c => c.KhungGioId == id) || await db.LichDatCoDinhs.AnyAsync(l => l.KhungGioId == id))
+            throw new BusinessException("Khung giờ đã được gắn bảng giá hoặc lịch đặt, không thể xóa.");
+        db.KhungGioMacDinhs.Remove(slot);
         await db.SaveChangesAsync();
     }
     public async Task AddPrice(long actor, PriceForm form)
