@@ -1,9 +1,15 @@
 @model QuanLySanBai.ViewModels.PolicyForm
-<h1>Thêm phiên bản chính sách</h1><p>Đóng hiệu lực phiên bản cũ trước khi tạo phiên bản mới. Khoảng phí phải liên tục từ 0 giờ đến vô hạn. Để trống cận trên ở dòng cuối.</p>
+@{ ViewData["Title"] = "Thêm phiên bản chính sách"; }
+<h1>@ViewData["Title"]</h1><p>Đóng hiệu lực phiên bản cũ trước khi tạo phiên bản mới. Khoảng phí phải liên tục từ 0 giờ đến vô hạn. Để trống cận trên ở dòng cuối.</p>
 <form method="post"><div asp-validation-summary="All" class="text-danger"></div><input asp-for="FacilityId" type="hidden" />
 <label for="Name">Tên chính sách</label><input asp-for="Name" class="form-control mb-2" />
 <label for="From">Hiệu lực từ</label><input asp-for="From" type="date" class="form-control mb-2" /><label for="Until">Đến (để trống = vô hạn)</label><input asp-for="Until" type="date" class="form-control mb-2" />
 <label><input asp-for="AllowChange" /> Cho phép đổi lịch</label>
 <div id="fees">@for(int i=0;i<Model.Fees.Count;i++) { <fieldset class="border p-3 my-2"><legend class="h6">Mức phí @(i+1)</legend><label>Từ giờ <input name="Fees[@i].From" type="number" min="0" step="0.01" value="@Model.Fees[i].From" required /></label> <label>Đến giờ <input name="Fees[@i].Until" type="number" min="0" step="0.01" value="@Model.Fees[i].Until" /></label> <label>Phí hủy % <input name="Fees[@i].CancelPercent" type="number" min="0" max="100" step="0.01" value="@Model.Fees[i].CancelPercent" required /></label> <label>Phí đổi % <input name="Fees[@i].ChangePercent" type="number" min="0" max="100" step="0.01" value="@Model.Fees[i].ChangePercent" required /></label></fieldset> }</div>
-<button type="button" id="add-fee" class="btn btn-secondary">Thêm mức phí</button> <button class="btn btn-primary">Lưu chính sách</button></form>
+<div class="action-row mt-3">
+    <button type="button" id="add-fee" class="btn btn-secondary">Thêm mức phí</button>
+    <button class="btn btn-primary" type="submit">Lưu chính sách</button>
+    <a asp-action="Index" asp-route-id="@Model.FacilityId" class="btn btn-outline-secondary">Quay lại</a>
+</div>
+</form>
 @section Scripts { <script>document.getElementById('add-fee').addEventListener('click',()=>{const host=document.getElementById('fees'),i=host.children.length;const node=host.firstElementChild.cloneNode(true);node.querySelector('legend').textContent='Mức phí '+(i+1);node.querySelectorAll('input').forEach(x=>{x.name=x.name.replace(/Fees\[\d+\]/,'Fees['+i+']');x.value='';});host.appendChild(node);});</script> }

@@ -1,10 +1,38 @@
 @model QuanLySanBai.ViewModels.FacilityForm
-<h1>@(Model.Id==0 ? "Đăng ký cơ sở" : "Sửa cơ sở")</h1>
+@{
+    ViewData["Title"] = Model.Id == 0 ? "Đăng ký cơ sở" : "Sửa cơ sở";
+    var isApproved = (ViewBag.ApprovalStatus as string) == "DA_DUYET";
+}
+<h1>@ViewData["Title"]</h1>
 <p>Cơ sở mới chờ Admin duyệt. Đổi tên hoặc địa chỉ sẽ yêu cầu duyệt lại.</p>
-<form method="post" class="col-lg-7"><div asp-validation-summary="All" class="text-danger"></div><input asp-for="Id" type="hidden" />
+<form method="post" class="col-lg-7" id="facility-form" data-approved="@(isApproved ? "true" : "false")" data-orig-name="@Model.Name" data-orig-address="@Model.Address"><div asp-validation-summary="All" class="text-danger"></div><input asp-for="Id" type="hidden" />
 <div class="mb-3"><label asp-for="Name"></label><input asp-for="Name" class="form-control" /></div>
 <div class="mb-3"><label asp-for="Address"></label><input asp-for="Address" class="form-control" /></div>
 <div class="mb-3"><label asp-for="Phone"></label><input asp-for="Phone" class="form-control" /></div>
 <div class="mb-3"><label asp-for="Open"></label><input asp-for="Open" type="time" class="form-control" /></div>
 <div class="mb-3"><label asp-for="Close"></label><input asp-for="Close" type="time" class="form-control" /></div>
-<label><input asp-for="Active" /> Đang hoạt động</label><button class="btn btn-primary d-block mt-3">Lưu cơ sở</button></form>
+<label><input asp-for="Active" /> Đang hoạt động</label>
+<div class="action-row mt-3">
+    <button class="btn btn-primary" type="submit">Lưu cơ sở</button>
+    @if(Model.Id != 0) { <a asp-action="Index" asp-route-id="@Model.Id" class="btn btn-outline-secondary">Quay lại</a> } else { <a href="/CoSo" class="btn btn-outline-secondary">Quay lại</a> }
+</div>
+</form>
+@section Scripts {
+<script>
+(() => {
+    const form = document.getElementById('facility-form');
+    if (!form || form.dataset.approved !== 'true') return;
+    const updateConfirm = () => {
+        const nameChanged = form.querySelector('#Name').value.trim() !== (form.dataset.origName || '').trim();
+        const addressChanged = form.querySelector('#Address').value.trim() !== (form.dataset.origAddress || '').trim();
+        if (nameChanged || addressChanged) {
+            form.dataset.confirm = 'Thay đổi tên hoặc địa chỉ sẽ chuyển cơ sở đã duyệt về trạng thái Chờ duyệt lại. Bạn có chắc chắn muốn lưu?';
+        } else {
+            delete form.dataset.confirm;
+        }
+    };
+    form.querySelector('#Name').addEventListener('input', updateConfirm);
+    form.querySelector('#Address').addEventListener('input', updateConfirm);
+})();
+</script>
+}
