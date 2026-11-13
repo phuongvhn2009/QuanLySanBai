@@ -1,7 +1,70 @@
 @model QuanLySanBai.ViewModels.CourtCalendar
-@{ ViewData["Title"]=Model.Court.TenSan; }
-<h1>@Model.Court.TenSan</h1><p>@Model.Court.CoSo.TenCoSo · @Model.Court.CoSo.DiaChi · @Model.Court.LoaiSan.MonTheThao.TenMon</p>
-<form method="get"><input name="id" value="@Model.Court.Id" type="hidden" /><label>Ngày sử dụng <input name="date" type="date" value="@Model.Date.ToString("yyyy-MM-dd")" required /></label> <button class="btn btn-secondary">Xem lịch</button></form>
-<p>Giờ Việt Nam (UTC+7). Kết thúc 00:00 là 24:00 của ngày đã chọn. Giá và chỗ trống được kiểm tra lại khi đặt.</p>
-@if(Model.Policy!=null) { <details class="border p-3 my-3"><summary>Chính sách hủy/đổi: @Model.Policy.TenChinhSach</summary><p>@(Model.Policy.ChoPhepDoiLich ? "Cho phép đổi lịch" : "Không cho phép đổi lịch")</p>@foreach(var f in Model.Policy.MucPhiHuyDois.OrderBy(f=>f.SoGioTuTruocTran)) { <p>@f.SoGioTuTruocTran–@(f.SoGioDenTruocTran?.ToString() ?? "∞") giờ trước buổi: phí hủy @f.TiLePhiHuy%, phí đổi @f.TiLePhiDoi%</p> }</details> }
-@foreach(var k in Model.Slots) { <article class="card p-3 my-2"><h2 class="h5">@k.Start–@(k.End==TimeOnly.MinValue ? "24:00" : k.End.ToString("HH:mm"))</h2><p>@k.Status · Giá @(k.Price?.ToString("N0") ?? "Chưa có") đ · Cọc @(k.Deposit?.ToString("N0") ?? "Chưa có") đ</p>@if(k.CanBook) { @if(User.Identity?.IsAuthenticated==true) { <form asp-controller="Bookings" asp-action="Create" method="post"><input name="CourtId" value="@Model.Court.Id" type="hidden" /><input name="SlotId" value="@k.SlotId" type="hidden" /><input name="Date" value="@Model.Date.ToString("yyyy-MM-dd")" type="hidden" /><label>Ghi chú <input name="Note" maxlength="1000" /></label> <button class="btn btn-primary">Đặt khung này</button></form> } else { <a href="/Account/Login?returnUrl=@Uri.EscapeDataString(Context.Request.Path+Context.Request.QueryString)">Đăng nhập để đặt</a> } }</article> }
+@{ ViewData["Title"] = $"{Model.Court.TenSan} — Lịch và đặt sân"; }
+<div class="mb-3">
+    <a asp-action="Index" class="btn btn-outline-secondary">← Danh sách sân</a>
+</div>
+<h1>@Model.Court.TenSan</h1>
+<p class="text-muted">@Model.Court.CoSo.TenCoSo · @Model.Court.CoSo.DiaChi · @Model.Court.LoaiSan.MonTheThao.TenMon</p>
+<form method="get" class="row g-2 align-items-center mb-3">
+    <input name="id" value="@Model.Court.Id" type="hidden" />
+    <div class="col-auto">
+        <label class="col-form-label">Ngày sử dụng</label>
+    </div>
+    <div class="col-auto">
+        <input name="date" type="date" class="form-control" value="@Model.Date.ToString("yyyy-MM-dd")" required />
+    </div>
+    <div class="col-auto">
+        <button class="btn btn-secondary">Xem lịch</button>
+    </div>
+</form>
+<p class="small text-muted">Giờ Việt Nam (UTC+7). Kết thúc 00:00 là 24:00 của ngày đã chọn. Giá và chỗ trống được kiểm tra lại khi đặt.</p>
+@if (Model.Policy != null)
+{
+    <details class="border p-3 my-3 rounded config-section">
+        <summary class="fw-semibold">Chính sách hủy/đổi: @Model.Policy.TenChinhSach</summary>
+        <p class="mt-2 mb-1">@(Model.Policy.ChoPhepDoiLich ? "Cho phép đổi lịch" : "Không cho phép đổi lịch")</p>
+        @foreach (var f in Model.Policy.MucPhiHuyDois.OrderBy(f => f.SoGioTuTruocTran))
+        {
+            <p class="mb-1 text-muted small">@f.SoGioTuTruocTran–@(f.SoGioDenTruocTran?.ToString() ?? "∞") giờ trước buổi: phí hủy @f.TiLePhiHuy.ToString("0.##")%, phí đổi @f.TiLePhiDoi.ToString("0.##")%</p>
+        }
+    </details>
+}
+@foreach (var k in Model.Slots)
+{
+    <article class="card p-3 my-2">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div>
+                <h2 class="h5 mb-1">@k.Start.ToString("HH:mm")–@(k.End == TimeOnly.MinValue ? "24:00" : k.End.ToString("HH:mm"))</h2>
+                <p class="mb-0 text-muted">
+                    <span class="badge @(k.CanBook ? "bg-success" : k.Status == "Đang giữ chỗ" ? "bg-warning text-dark" : "bg-secondary")">@k.Status</span>
+                    @if (k.Price.HasValue)
+                    {
+                        <span> · Giá @k.Price.Value.ToString("N0") đ · Cọc @(k.Deposit?.ToString("N0") ?? "0") đ</span>
+                    }
+                    else
+                    {
+                        <span> · Chưa có giá</span>
+                    }
+                </p>
+            </div>
+            @if (k.CanBook)
+            {
+                @if (User.Identity?.IsAuthenticated == true)
+                {
+                    <form asp-controller="Bookings" asp-action="Create" method="post" class="d-flex align-items-center gap-2"
+                          data-confirm="Xác nhận đặt khung giờ @k.Start.ToString("HH:mm")–@(k.End == TimeOnly.MinValue ? "24:00" : k.End.ToString("HH:mm")) ngày @Model.Date.ToString("dd/MM/yyyy") (Giá: @(k.Price?.ToString("N0") ?? "0") đ, Cọc: @(k.Deposit?.ToString("N0") ?? "0") đ)?">
+                        <input name="CourtId" value="@Model.Court.Id" type="hidden" />
+                        <input name="SlotId" value="@k.SlotId" type="hidden" />
+                        <input name="Date" value="@Model.Date.ToString("yyyy-MM-dd")" type="hidden" />
+                        <input name="Note" maxlength="1000" class="form-control form-control-sm" placeholder="Ghi chú (tùy chọn)" />
+                        <button type="submit" class="btn btn-primary text-nowrap">Đặt khung này</button>
+                    </form>
+                }
+                else
+                {
+                    <a href="/Account/Login?returnUrl=@Uri.EscapeDataString(Context.Request.Path + Context.Request.QueryString)" class="btn btn-outline-primary btn-sm">Đăng nhập để đặt</a>
+                }
+            }
+        </div>
+    </article>
+}
