@@ -1,6 +1,6 @@
 # Bàn giao cụm 1–4
 
-Phạm vi: N01–N05, A01–A05, C01–C06, B01–B05. Nhánh `MA-TaiKhoanPhanQuyen`; thay đổi đang ở working tree, đã commit/push và merge theo cụm, xem Git log. Giao diện Bootstrap phục vụ thao tác.
+Phạm vi: N01–N05, A01–A05, C01–C06, B01–B05. Đã commit/push theo các nhánh A/C/B và merge vào `master`. Giao diện Bootstrap phục vụ thao tác. Xem [mục lục tài liệu](README.md) để đọc báo cáo riêng từng cụm.
 
 ## Luồng dữ liệu
 
