@@ -5,8 +5,9 @@
     var signedIn=User.Identity?.IsAuthenticated==true;
     var admin=User.IsInRole("ADMIN");
     var id=AccessService.UserId(User);
-    var hasFacilities=signedIn && !admin && await Db.CoSos.AnyAsync(c=>c.ChuSoHuuId==id || c.ThanhVienCoSos.Any(m=>m.NguoiDungId==id && m.TrangThaiHoatDong));
-    var owner=hasFacilities && await Db.CoSos.AnyAsync(c=>c.ChuSoHuuId==id);
+    var hasFacilities=signedIn && !admin && await Db.CoSos.AnyAsync(c=>c.TrangThaiDuyet=="DA_DUYET" && (c.ChuSoHuuId==id || c.ThanhVienCoSos.Any(m=>m.NguoiDungId==id && m.TrangThaiHoatDong)));
+    var applications=signedIn && !admin && await Db.CoSos.AnyAsync(c=>c.ChuSoHuuId==id && c.TrangThaiDuyet!="DA_DUYET");
+    var owner=hasFacilities && await Db.CoSos.AnyAsync(c=>c.ChuSoHuuId==id && c.TrangThaiDuyet=="DA_DUYET");
     var role=admin ? "Quản trị viên" : owner ? "Chủ cơ sở" : hasFacilities ? "Nhân viên cơ sở" : "Khách hàng";
     var path=Context.Request.Path.Value ?? "";
 }
@@ -24,6 +25,7 @@
 <a class="nav-link @(path.Contains("Catalog") ? "active" : "")" href="/Admin/Catalog">Danh mục</a>
 } else {
 @if(hasFacilities) { <a class="nav-link @(path.StartsWith("/CoSo") ? "active" : "")" href="/CoSo">@(owner ? "Quản lý cơ sở" : "Cơ sở làm việc")</a> }
+else if(applications) { <a class="nav-link @(path.StartsWith("/CoSo") ? "active" : "")" href="/CoSo">Đơn đăng ký cơ sở</a> }
 <a class="nav-link @(path.StartsWith("/Courts") ? "active" : "")" href="/Courts">Tìm sân</a>
 @if(signedIn) { <a class="nav-link @(path.StartsWith("/Bookings") ? "active" : "")" href="/Bookings">Lịch đặt của tôi</a> }
 }
@@ -31,7 +33,7 @@
 @if(signedIn) {
 <div class="dropdown"><button class="btn btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">@User.Identity!.Name</button>
 <ul class="dropdown-menu dropdown-menu-end"><li><a class="dropdown-item" href="/Account/Profile">Hồ sơ cá nhân</a></li>
-@if(!admin && !hasFacilities) { <li><a class="dropdown-item" href="/CoSo/Configuration/Facility">Đăng ký cơ sở kinh doanh</a></li> }
+@if(!admin && !hasFacilities && !applications) { <li><a class="dropdown-item" href="/CoSo/Configuration/Facility">Đăng ký cơ sở kinh doanh</a></li> }
 <li><hr class="dropdown-divider" /></li><li><form action="/Account/Logout" method="post">@Html.AntiForgeryToken()<button class="dropdown-item text-danger" type="submit">Đăng xuất</button></form></li></ul></div>
 } else { <div class="d-flex gap-2"><a class="btn btn-outline-primary" href="/Account/Login">Đăng nhập</a><a class="btn btn-primary" href="/Account/Register">Tạo tài khoản</a></div> }
 </div></div></nav>

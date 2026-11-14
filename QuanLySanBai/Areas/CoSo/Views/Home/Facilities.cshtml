@@ -1,10 +1,14 @@
 @using QuanLySanBai.Services
 @model List<QuanLySanBai.Models.Entities.CoSo>
-@{ var actor=AccessService.UserId(User); var manages=(List<long>)ViewBag.ManagedIds; var owner=Model.Any(c=>c.ChuSoHuuId==actor); ViewData["Title"]="Cơ sở của tôi"; }
-<div class="page-heading"><div><h1>@(owner ? "Quản lý cơ sở" : "Cơ sở làm việc")</h1><p class="text-muted">Chỉ hiển thị thao tác bạn được cấp quyền.</p></div>@if(owner) { <a class="btn btn-primary" href="/CoSo/Configuration/Facility">Thêm cơ sở</a> }</div>
+@{ var actor=AccessService.UserId(User); var manages=(List<long>)ViewBag.ManagedIds; var owner=Model.Any(c=>c.ChuSoHuuId==actor); var approved=Model.Any(c=>c.TrangThaiDuyet=="DA_DUYET"); ViewData["Title"]=approved ? "Cơ sở của tôi" : "Đơn đăng ký cơ sở"; }
+<div class="page-heading"><div><h1>@(approved ? (owner ? "Quản lý cơ sở" : "Cơ sở làm việc") : "Đơn đăng ký cơ sở")</h1><p class="text-muted">@(approved ? "Chỉ hiển thị thao tác bạn được cấp quyền." : "Theo dõi hồ sơ đăng ký. Chức năng quản lý mở sau khi Admin duyệt.")</p></div>@if(owner) { <a class="btn btn-primary" href="/CoSo/Configuration/Facility">Đăng ký thêm cơ sở</a> }</div>
 @if(Model.Count==0) { <div class="empty-state"><h2 class="h5">Bạn chưa có cơ sở</h2><p>Đăng ký cơ sở kinh doanh để bắt đầu quản lý sân.</p><a class="btn btn-primary" href="/CoSo/Configuration/Facility">Đăng ký cơ sở</a></div> }
 <div class="row g-3">@foreach(var c in Model) { <div class="col-md-6"><article class="card p-4 h-100"><h2 class="h5">@c.TenCoSo</h2><p class="text-muted">@c.DiaChi</p><p><span class="status-label">@(c.TrangThaiDuyet=="DA_DUYET" ? "Đã duyệt" : c.TrangThaiDuyet=="TU_CHOI" ? "Từ chối" : "Chờ duyệt")</span></p><div class="action-row mt-auto">
+@if(c.TrangThaiDuyet!="DA_DUYET") {
+<div><p>@(c.TrangThaiDuyet=="TU_CHOI" ? "Đơn đăng ký chưa được chấp thuận. Bạn có thể cập nhật hồ sơ và gửi duyệt lại." : "Đơn đăng ký đang chờ Admin xét duyệt.")</p><a class="btn btn-outline-primary" asp-controller="Configuration" asp-action="Facility" asp-route-id="@c.Id">Xem / cập nhật đơn đăng ký</a></div>
+} else {
 @if(c.ChuSoHuuId==actor) { <a class="btn btn-primary" href="/CoSo/Configuration?id=@c.Id">Quản lý sân và cấu hình</a> }
 @if(manages.Contains(c.Id)) { <a class="btn btn-outline-primary" asp-controller="Members" asp-action="Index" asp-route-coSoId="@c.Id">Quản lý nhân viên</a> }
 @if(c.ChuSoHuuId!=actor && !manages.Contains(c.Id)) { <p class="text-muted mb-0">Bạn chưa được cấp quyền quản lý nhân viên. Liên hệ chủ cơ sở nếu cần.</p> }
+}
 </div></article></div> }</div>

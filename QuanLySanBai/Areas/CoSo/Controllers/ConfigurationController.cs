@@ -16,10 +16,10 @@ public class ConfigurationController(QuanLySanBaiContext db, FacilityService ser
     [HttpGet] public async Task<IActionResult> Facility(long id=0)
     {
         if (id==0) return View(new FacilityForm());
-        var c=await service.Owned(Actor,id);
+        var c=await service.Owned(Actor,id,registrationOnly: true);
         return View(new FacilityForm { Id=c.Id, Name=c.TenCoSo, Address=c.DiaChi, Phone=c.SoDienThoaiHotline, Open=c.GioMoCua, Close=c.GioDongCua, Active=c.DangHoatDong });
     }
-    [HttpPost] public async Task<IActionResult> Facility(FacilityForm model) { if(!ModelState.IsValid) return View(model); return Done(await service.SaveFacility(Actor,model)); }
+    [HttpPost] public async Task<IActionResult> Facility(FacilityForm model) { if(!ModelState.IsValid) return View(model); await service.SaveFacility(Actor,model); return RedirectToAction("Index","Home",new { area="CoSo" }); }
     [HttpGet] public async Task<IActionResult> Court(long facilityId, long id=0)
     {
         await service.Owned(Actor,facilityId);

@@ -57,6 +57,9 @@ try
     var owner=await User("0988000001","KHACH_HANG"); var customer=await User("0988000002","KHACH_HANG"); var other=await User("0988000003","KHACH_HANG"); var admin=await User("0988000004","ADMIN");
     var facility=await With(db=>new FacilityService(db).SaveFacility(owner,new FacilityForm { Name="Cơ sở kiểm thử",Address="Hồ Chí Minh",Open=new(6,0),Close=TimeOnly.MinValue }));
     Check(await Scalar($"SELECT COUNT(*) FROM Co_So WHERE id={facility} AND trang_thai_duyet=N'CHO_DUYET'")==1,"C01: facility starts pending");
+    Check(!await With(db=>new AccessService(db).CanManage(owner,facility)),"C01: pending owner cannot manage members");
+    await Reject(()=>Run(db=>new FacilityService(db).AddSlot(owner,new SlotForm { FacilityId=facility,Start=new(18,0),End=new(19,0) })),"C01: pending owner cannot configure slots");
+    await Sql($"UPDATE Co_So SET trang_thai_duyet='DA_DUYET' WHERE id={facility}");
     await With(async db => {
         var access=new AccessService(db);
         var member=new ThanhVienCoSo { CoSoId=facility,NguoiDungId=customer,VaiTroNoiBo="NHAN_VIEN",TrangThaiHoatDong=true,NgayThamGia=VietnamTime.Now };
@@ -90,6 +93,7 @@ try
     var typeId=await With(db=>db.LoaiSans.Select(t=>t.Id).SingleAsync());
     await Run(db=>new FacilityService(db).SaveCourt(owner,new CourtForm { FacilityId=facility,Name="Sân 1",TypeId=typeId }));
     var court=await With(db=>db.Sans.Select(s=>s.Id).SingleAsync());
+    await Sql($"UPDATE Co_So SET trang_thai_duyet='CHO_DUYET' WHERE id={facility}");
     Check((await With(db=>new BookingService(db,settings).Calendar(court,VietnamTime.Today.AddDays(1))))==null,"B01: pending facility hidden");
     await Sql($"UPDATE Co_So SET trang_thai_duyet='DA_DUYET' WHERE id={facility}");
     await Run(db=>new FacilityService(db).AddSlot(owner,new SlotForm { FacilityId=facility,Start=new(18,0),End=new(19,0) }));
@@ -197,6 +201,18 @@ try
     await Post("/Account/Login",new() { ["Login"]="0988000001",["Password"]="Cluster4Test123!" },"/Account/Login");
     var ownerHtml=WebUtility.HtmlDecode(await client.GetStringAsync("/CoSo"));
     Check(ownerHtml.Contains("Quản lý sân và cấu hình") && ownerHtml.Contains("Quản lý nhân viên") && !ownerHtml.Contains("href=\"/Admin"),"UI: owner sees own management actions");
+    foreach(var approval in new[] { "CHO_DUYET", "TU_CHOI" }) {
+        await Sql($"UPDATE Co_So SET trang_thai_duyet='{approval}' WHERE id={facility}");
+        var applicationHtml=WebUtility.HtmlDecode(await client.GetStringAsync("/CoSo"));
+        Check(applicationHtml.Contains("Đơn đăng ký cơ sở") && !applicationHtml.Contains("Quản lý sân và cấu hình") && !applicationHtml.Contains("Quản lý nhân viên"),"C01 UI: unapproved facility is an application: "+approval);
+        Check((int)(await client.GetAsync("/CoSo/Configuration/Index/"+facility)).StatusCode==302,"C01 HTTP: unapproved configuration URL blocked");
+        Check((int)(await client.GetAsync("/CoSo/Members?coSoId="+facility)).StatusCode==302,"C01 HTTP: unapproved member URL blocked");
+        Check((int)(await client.GetAsync("/CoSo/Configuration/Facility/"+facility)).StatusCode==200,"C01 HTTP: owner can edit application");
+        var blocked=await Post("/CoSo/Configuration/Slot",new() { ["FacilityId"]=facility.ToString(),["Start"]="10:00",["End"]="11:00" },"/Account/Profile");
+        Check((int)blocked.StatusCode==302 && blocked.Headers.Location!.ToString().Contains("/Account/Denied"),"C01 HTTP: unapproved configuration POST denied");
+    }
+    await Sql($"UPDATE Co_So SET trang_thai_duyet='DA_DUYET' WHERE id={facility}");
+    Check(WebUtility.HtmlDecode(await client.GetStringAsync("/CoSo")).Contains("Quản lý sân và cấu hình"),"C01 UI: approval restores management");
     foreach(var path in new[] {"/CoSo/Configuration/Index/"+facility,"/CoSo/Configuration/Facility/"+facility,"/CoSo/Configuration/Court?facilityId="+facility,"/CoSo/Configuration/Policy?facilityId="+facility}) { var r=await client.GetAsync(path); if((int)r.StatusCode!=200) Console.WriteLine(await r.Content.ReadAsStringAsync()); Check((int)r.StatusCode==200,"C01-C06 view renders "+path); }
     await With(async db => {
         var member=new ThanhVienCoSo { CoSoId=facility,NguoiDungId=other,VaiTroNoiBo="QUAN_LY",TrangThaiHoatDong=true,NgayThamGia=VietnamTime.Now };

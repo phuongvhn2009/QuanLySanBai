@@ -5,7 +5,7 @@ using QuanLySanBai.Data;
 using QuanLySanBai.Services;
 namespace QuanLySanBai.Areas.Admin.Controllers;
 [Area("Admin"), Authorize(Roles = "ADMIN")]
-public class ManagementController(QuanLySanBaiContext db) : Controller
+public class ManagementController(QuanLySanBaiContext db, RealtimeUpdates? updates = null) : Controller
 {
     public async Task<IActionResult> Users(string? search)
     {
@@ -30,6 +30,10 @@ public class ManagementController(QuanLySanBaiContext db) : Controller
         if (facility is null) return NotFound();
         facility.TrangThaiDuyet = decision; facility.NgayCapNhat = DateTime.Now;
         await db.SaveChangesAsync();
+        if(updates is not null) {
+            var users=await db.ThanhVienCoSos.Where(m=>m.CoSoId==id).Select(m=>m.NguoiDungId).ToListAsync();
+            foreach(var userId in users.Append(facility.ChuSoHuuId).Distinct()) await updates.Permissions(userId);
+        }
         return RedirectToAction(nameof(Facilities));
     }
 }
