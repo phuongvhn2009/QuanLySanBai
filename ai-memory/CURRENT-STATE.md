@@ -59,3 +59,11 @@ Folder ai-memory đã được commit và push lên `origin/master` ngày 2026-1
 - Database tạm QuanLySanBai_Cluster4Tests_cd15850dc94d4e97bfe2d10c1cea2f61 đã dọn. Không ghi dữ liệu test vào DB live.
 - Báo cáo và checklist đầy đủ: docs/cluster-3-4-acceptance.md; log: docs/evidence/cluster34-2026-11-14.txt. Chưa thực hiện kiểm tra trực quan bằng chuột/trình duyệt, tổ hợp bộ lọc và countdown cần nghiệm thu thêm theo checklist.
 - Đã commit và push toàn bộ thay đổi ngày 2026-11-14 cùng tài liệu/ai-memory lên `origin/master` theo yêu cầu người dùng.
+
+## Sửa luồng duyệt cơ sở (2026-11-14, nhánh fix-coso-cho-duyet)
+- CHO_DUYET/TU_CHOI chỉ hiện Đơn đăng ký cơ sở và cho chủ xem/cập nhật hồ sơ; không mở quản lý sân/cấu hình/nhân viên.
+- AccessService yêu cầu DA_DUYET. FacilityService.Owned mặc định yêu cầu đã duyệt; chỉ GET/POST hồ sơ dùng registrationOnly:true, vẫn kiểm tra đúng chủ.
+- Lưu hồ sơ chuyển về /CoSo; đơn bị từ chối khi lưu chuyển CHO_DUYET. Đổi tên/địa chỉ cơ sở đã duyệt yêu cầu duyệt lại.
+- Admin Review và SaveFacility gửi SignalR tới chủ/thành viên để cập nhật giao diện.
+- Build 0 lỗi/cảnh báo; 115 assertion SQL/HTTP/WebSocket đạt trên database tạm đã dọn. Kiểm tra cả hồ sơ chờ/từ chối, URL/POST bị chặn và mở lại sau duyệt. Chưa kiểm tra trực quan trên browser.
+- Thứ tự nghiệm thu: đăng ký → admin duyệt → cấu hình sân/nhân viên. Kết quả 101 checks là lịch sử trước bản sửa này.

@@ -4,21 +4,22 @@ using QuanLySanBai.Models.Entities;
 using QuanLySanBai.ViewModels;
 namespace QuanLySanBai.Services;
 
-public class FacilityService(QuanLySanBaiContext db)
+public class FacilityService(QuanLySanBaiContext db, RealtimeUpdates? updates = null)
 {
-    public async Task<CoSo> Owned(long actor, long id)
+    public async Task<CoSo> Owned(long actor, long id, bool registrationOnly = false)
     {
         var c = await db.CoSos.SingleOrDefaultAsync(c => c.Id == id && c.ChuSoHuuId == actor);
-        return c ?? throw new FacilityAccessException();
+        if(c is null || !registrationOnly && c.TrangThaiDuyet != "DA_DUYET") throw new FacilityAccessException();
+        return c;
     }
     public async Task<long> SaveFacility(long actor, FacilityForm form)
     {
         if (!VietnamTime.ValidHours(form.Open, form.Close)) throw new BusinessException("Khoảng giờ mở cửa không hợp lệ.");
         if (string.IsNullOrWhiteSpace(form.Name) || string.IsNullOrWhiteSpace(form.Address)) throw new BusinessException("Nhập tên và địa chỉ cơ sở.");
         await using var tx = await db.Database.BeginTransactionAsync();
-        var c = form.Id == 0 ? new CoSo { ChuSoHuuId = actor, TrangThaiDuyet = "CHO_DUYET", NgayTao = VietnamTime.Now } : await Owned(actor, form.Id);
+        var c = form.Id == 0 ? new CoSo { ChuSoHuuId = actor, TrangThaiDuyet = "CHO_DUYET", NgayTao = VietnamTime.Now } : await Owned(actor, form.Id, registrationOnly: true);
         if (form.Id == 0) db.CoSos.Add(c);
-        else if (c.TenCoSo != form.Name.Trim() || c.DiaChi != form.Address.Trim()) c.TrangThaiDuyet = "CHO_DUYET";
+        else if (c.TrangThaiDuyet=="TU_CHOI" || c.TenCoSo != form.Name.Trim() || c.DiaChi != form.Address.Trim()) c.TrangThaiDuyet = "CHO_DUYET";
         c.TenCoSo = form.Name.Trim(); c.DiaChi = form.Address.Trim(); c.SoDienThoaiHotline = form.Phone;
         c.GioMoCua = form.Open; c.GioDongCua = form.Close; c.DangHoatDong = form.Active; c.NgayCapNhat = VietnamTime.Now;
         await db.SaveChangesAsync();
@@ -29,7 +30,12 @@ public class FacilityService(QuanLySanBaiContext db)
             if (!await db.NguoiDungVaiTros.AnyAsync(r => r.NguoiDungId == actor && r.VaiTroId == role.Id)) db.NguoiDungVaiTros.Add(new NguoiDungVaiTro { NguoiDungId = actor, VaiTroId = role.Id, NgayGan = VietnamTime.Now });
             await db.SaveChangesAsync();
         }
-        await tx.CommitAsync(); return c.Id;
+        await tx.CommitAsync();
+        if(updates is not null) {
+            var users=await db.ThanhVienCoSos.Where(m=>m.CoSoId==c.Id).Select(m=>m.NguoiDungId).ToListAsync();
+            foreach(var userId in users.Append(actor).Distinct()) await updates.Permissions(userId);
+        }
+        return c.Id;
     }
     public async Task SaveCourt(long actor, CourtForm form)
     {

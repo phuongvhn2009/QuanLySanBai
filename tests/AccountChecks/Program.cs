@@ -50,7 +50,7 @@ try {
     var profile = Setup(new AccountController(db, hasher), staff);
     await profile.Profile(new ProfileModel { HoVaTen="Tên mới", SoDienThoai=staff.SoDienThoai, Email=staff.Email });
     Check(staff.HoVaTen == "Tên mới" && owner.HoVaTen == "Kiểm thử", "Profile updates current user only");
-    var facility = new CoSo { ChuSoHuuId=owner.Id, TenCoSo="Test", DiaChi="Test", GioMoCua=new TimeOnly(6,0), GioDongCua=new TimeOnly(22,0), TrangThaiDuyet="CHO_DUYET", DangHoatDong=true, NgayTao=DateTime.Now, NgayCapNhat=DateTime.Now };
+    var facility = new CoSo { ChuSoHuuId=owner.Id, TenCoSo="Test", DiaChi="Test", GioMoCua=new TimeOnly(6,0), GioDongCua=new TimeOnly(22,0), TrangThaiDuyet="DA_DUYET", DangHoatDong=true, NgayTao=DateTime.Now, NgayCapNhat=DateTime.Now };
     db.CoSos.Add(facility); await db.SaveChangesAsync();
     Check(await access.CanManage(owner.Id, facility.Id) && !await access.CanManage(stranger.Id, facility.Id), "Facility owner allowed and stranger denied");
     var members = Setup(new MembersController(db, access), owner);
