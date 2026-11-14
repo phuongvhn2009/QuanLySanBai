@@ -7,7 +7,7 @@ using QuanLySanBai.Models.Entities;
 using QuanLySanBai.ViewModels;
 namespace QuanLySanBai.Services;
 
-public class BookingService(QuanLySanBaiContext db, IOptions<BookingOptions> options)
+public class BookingService(QuanLySanBaiContext db, IOptions<BookingOptions> options, RealtimeUpdates? updates = null)
 {
     public IQueryable<San> PublicCourts => db.Sans.AsNoTracking().Where(s=>s.DangHoatDong && s.CoSo.DangHoatDong && s.CoSo.TrangThaiDuyet=="DA_DUYET" && s.LoaiSan.MonTheThao.TrangThai);
     public async Task<CourtCalendar?> Calendar(long courtId, DateOnly date)
@@ -56,11 +56,20 @@ public class BookingService(QuanLySanBaiContext db, IOptions<BookingOptions> opt
             command.Parameters.Add(new SqlParameter("@ghi_chu",SqlDbType.NVarChar,-1) { Value=(object?)form.Note ?? DBNull.Value });
             await using var reader=await command.ExecuteReaderAsync(ct);
             if(!await reader.ReadAsync(ct)) throw new BusinessException("Không nhận được kết quả đặt sân. Hãy kiểm tra Đơn của tôi trước khi thử lại.");
-            return reader.GetInt64(reader.GetOrdinal("don_dat_san_id"));
+            var id=reader.GetInt64(reader.GetOrdinal("don_dat_san_id"));
+            await reader.DisposeAsync();
+            if(updates is not null) await updates.Calendar(form.CourtId);
+            return id;
         }
         finally { await db.Database.CloseConnectionAsync(); }
     }
-    public async Task Expire(CancellationToken ct=default) => await db.Database.ExecuteSqlRawAsync("EXEC dbo.usp_GiaiPhongGiuChoHetHan",ct);
+    public async Task Expire(CancellationToken ct=default)
+    {
+        var now=await ServerNow();
+        var courts=updates is null ? [] : await db.ChiTietDatSans.Where(c=>c.TrangThaiSlot=="GIU_CHO" && c.DonDatSan.ThoiGianHetHanGiuCho<=now).Select(c=>c.SanId).Distinct().ToListAsync(ct);
+        await db.Database.ExecuteSqlRawAsync("EXEC dbo.usp_GiaiPhongGiuChoHetHan",ct);
+        if(updates is not null) foreach(var court in courts) await updates.Calendar(court);
+    }
 }
 
 public class HoldExpiryWorker(IServiceScopeFactory scopes, IOptions<BookingOptions> options, ILogger<HoldExpiryWorker> logger) : BackgroundService

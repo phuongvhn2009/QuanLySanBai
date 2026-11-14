@@ -487,3 +487,8 @@ $RECYCLE.BIN/
 test-data/*.local.txt
 
 .playwright-mcp/
+
+# Graphify: keep graph/report/HTML; ignore caches and machine-local state
+graphify-out/cache/
+graphify-out/.graphify_*
+graphify-out/manifest.json

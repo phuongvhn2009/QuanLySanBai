@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="vi"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>@ViewData["Title"] — Sân Bãi</title>
 <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" /><link rel="stylesheet" href="~/css/site.css" asp-append-version="true" /></head>
-<body><a class="visually-hidden-focusable" href="#main-content">Đến nội dung chính</a>
+<body data-signed-in="@((User.Identity?.IsAuthenticated==true).ToString().ToLowerInvariant())"><a class="visually-hidden-focusable" href="#main-content">Đến nội dung chính</a>
 <header><partial name="~/Views/Shared/_AccountNav.cshtml" /></header>
 <main id="main-content" class="container py-4"><partial name="~/Views/Shared/_Notifications.cshtml" />@RenderBody()</main>
 <footer class="container py-4 text-muted small border-top">Sân Bãi · Quản lý và đặt sân thể thao</footer>
-<script src="~/lib/jquery/dist/jquery.min.js"></script><script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script><script src="~/js/site.js" asp-append-version="true"></script>@await RenderSectionAsync("Scripts",required:false)</body></html>
+<script src="~/lib/jquery/dist/jquery.min.js"></script><script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script><script src="~/js/site.js" asp-append-version="true"></script><script src="~/lib/signalr/signalr.min.js" asp-append-version="true"></script><script src="~/js/realtime.js" asp-append-version="true"></script>@await RenderSectionAsync("Scripts",required:false)</body></html>

@@ -6,7 +6,8 @@ using QuanLySanBai.Models.Entities;
 using QuanLySanBai.Services;
 namespace QuanLySanBai.Areas.CoSo.Controllers;
 [Area("CoSo"), Authorize]
-public class MembersController(QuanLySanBaiContext db, AccessService access) : Controller
+[ResponseCache(Location = ResponseCacheLocation.None, NoStore = true)]
+public class MembersController(QuanLySanBaiContext db, AccessService access, RealtimeUpdates? updates = null) : Controller
 {
     public async Task<IActionResult> Index(long coSoId)
     {
@@ -23,7 +24,7 @@ public class MembersController(QuanLySanBaiContext db, AccessService access) : C
         if (user is null) { TempData["ErrorMessage"] = "Không tìm thấy tài khoản đang hoạt động."; return RedirectToAction(nameof(Index), new { coSoId }); }
         if (await db.ThanhVienCoSos.AnyAsync(m => m.CoSoId == coSoId && m.NguoiDungId == user.Id)) { TempData["ErrorMessage"] = "Tài khoản đã là thành viên."; return RedirectToAction(nameof(Index), new { coSoId }); }
         db.ThanhVienCoSos.Add(new ThanhVienCoSo { CoSoId = coSoId, NguoiDungId = user.Id, VaiTroNoiBo = "NHAN_VIEN", TrangThaiHoatDong = true, NgayThamGia = DateTime.Now });
-        try { await db.SaveChangesAsync(); }
+        try { await db.SaveChangesAsync(); if(updates is not null) await updates.Permissions(user.Id); }
         catch (DbUpdateException e) when (e.InnerException is Microsoft.Data.SqlClient.SqlException { Number: 2601 or 2627 }) { TempData["ErrorMessage"] = "Tài khoản đã là thành viên."; }
         return RedirectToAction(nameof(Index), new { coSoId });
     }
@@ -48,6 +49,7 @@ public class MembersController(QuanLySanBaiContext db, AccessService access) : C
         db.PhanQuyenThanhViens.RemoveRange(member.PhanQuyenThanhViens.Where(p => !ids.Contains(p.QuyenHanId)));
         foreach (var id in ids.Where(id => !member.PhanQuyenThanhViens.Any(p => p.QuyenHanId == id))) member.PhanQuyenThanhViens.Add(new PhanQuyenThanhVien { QuyenHanId = id });
         await db.SaveChangesAsync();
+        if(updates is not null) await updates.Permissions(member.NguoiDungId);
         TempData["SuccessMessage"] = "Đã cập nhật thành viên và quyền.";
         return RedirectToAction(nameof(Index), new { coSoId });
     }

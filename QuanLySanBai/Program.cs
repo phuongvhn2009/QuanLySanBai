@@ -7,6 +7,8 @@ using QuanLySanBai.Models.Entities;
 using QuanLySanBai.Services;
 
 var builder = WebApplication.CreateBuilder(args.Where(a=>a!="--seed-demo").ToArray());
+builder.Services.AddSignalR();
+builder.Services.AddScoped<RealtimeUpdates>();
 
 // Add services to the container.
 builder.Services.AddControllersWithViews(o => { o.Filters.Add(new AutoValidateAntiforgeryTokenAttribute()); o.Filters.Add<BusinessErrorFilter>(); });
@@ -57,6 +59,7 @@ app.UseRouting();
 
 app.UseAuthentication();
 app.UseAuthorization();
+app.MapHub<UpdatesHub>("/updates", options => options.CloseOnAuthenticationExpiration = true);
 
 app.MapStaticAssets();
 

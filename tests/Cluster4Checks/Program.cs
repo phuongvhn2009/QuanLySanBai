@@ -18,6 +18,26 @@ var connection=new SqlConnectionStringBuilder(master) { InitialCatalog=database 
 var options=new DbContextOptionsBuilder<QuanLySanBaiContext>().UseSqlServer(connection).Options;
 var settings=Options.Create(new BookingOptions());
 var count=0;
+async Task SendSocket(System.Net.WebSockets.ClientWebSocket socket,string message) => await socket.SendAsync(new ArraySegment<byte>(System.Text.Encoding.UTF8.GetBytes(message+"\u001e")),System.Net.WebSockets.WebSocketMessageType.Text,true,CancellationToken.None);
+async Task<string> ReadSocket(System.Net.WebSockets.ClientWebSocket socket,string expected)
+{
+    using var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(10));
+    var buffer=new byte[65536]; var text="";
+    while(!text.Contains(expected)) {
+        var result=await socket.ReceiveAsync(new ArraySegment<byte>(buffer),timeout.Token);
+        if(result.MessageType==System.Net.WebSockets.WebSocketMessageType.Close) throw new Exception("Realtime connection closed unexpectedly");
+        text+=System.Text.Encoding.UTF8.GetString(buffer,0,result.Count);
+    }
+    return text;
+}
+async Task<System.Net.WebSockets.ClientWebSocket> OpenSocket(Uri baseUri,CookieContainer? cookies=null)
+{
+    var socket=new System.Net.WebSockets.ClientWebSocket();
+    if(cookies is not null) socket.Options.Cookies=cookies;
+    await socket.ConnectAsync(new UriBuilder(baseUri) { Scheme="ws",Path="/updates" }.Uri,CancellationToken.None);
+    await SendSocket(socket,"{\"protocol\":\"json\",\"version\":1}");
+    await ReadSocket(socket,"{}"); return socket;
+}
 void Check(bool ok,string name) { if(!ok) throw new Exception("FAIL: "+name); count++; Console.WriteLine("PASS: "+name); }
 async Task Reject(Func<Task> operation,string name) { try { await operation(); } catch(Exception e) when(e is BusinessException or FacilityAccessException or SqlException or DbUpdateException) { Check(true,name); return; } throw new Exception("FAIL: "+name); }
 async Task Sql(string sql) { await using var c=new SqlConnection(connection); await c.OpenAsync(); await using var command=new SqlCommand(sql,c); await command.ExecuteNonQueryAsync(); }
@@ -37,6 +57,32 @@ try
     var owner=await User("0988000001","KHACH_HANG"); var customer=await User("0988000002","KHACH_HANG"); var other=await User("0988000003","KHACH_HANG"); var admin=await User("0988000004","ADMIN");
     var facility=await With(db=>new FacilityService(db).SaveFacility(owner,new FacilityForm { Name="Cơ sở kiểm thử",Address="Hồ Chí Minh",Open=new(6,0),Close=TimeOnly.MinValue }));
     Check(await Scalar($"SELECT COUNT(*) FROM Co_So WHERE id={facility} AND trang_thai_duyet=N'CHO_DUYET'")==1,"C01: facility starts pending");
+    await With(async db => {
+        var access=new AccessService(db);
+        var member=new ThanhVienCoSo { CoSoId=facility,NguoiDungId=customer,VaiTroNoiBo="NHAN_VIEN",TrangThaiHoatDong=true,NgayThamGia=VietnamTime.Now };
+        db.ThanhVienCoSos.Add(member); await db.SaveChangesAsync();
+        var calendar=await db.QuyenHans.SingleAsync(q=>q.MaQuyen=="XEM_LICH");
+        var management=await db.QuyenHans.SingleAsync(q=>q.MaQuyen=="QUAN_LY_THANH_VIEN");
+        foreach(var role in new[] { "NHAN_VIEN", "QUAN_LY", "CHU_SAN" }) {
+            member.VaiTroNoiBo=role; await db.SaveChangesAsync();
+            Check(!await access.CanManage(customer,facility) && !await access.HasPermission(customer,facility,"XEM_LICH"),"A03: member role alone grants no owner privileges: "+role);
+        }
+        member.VaiTroNoiBo="QUAN_LY";
+        var granted=new PhanQuyenThanhVien { QuyenHanId=calendar.Id };
+        member.PhanQuyenThanhViens.Add(granted); await db.SaveChangesAsync();
+        Check(await access.HasPermission(customer,facility,"XEM_LICH") && !await access.CanManage(customer,facility),"A03: manager only has explicitly granted calendar permission");
+        var delegated=new PhanQuyenThanhVien { QuyenHanId=management.Id };
+        member.PhanQuyenThanhViens.Add(delegated); await db.SaveChangesAsync();
+        Check(await access.CanManage(customer,facility),"A03: explicit member management grant works");
+        db.PhanQuyenThanhViens.Remove(delegated); await db.SaveChangesAsync();
+        Check(!await access.CanManage(customer,facility),"A03: manager permission revoked without changing role");
+        member.TrangThaiHoatDong=false; await db.SaveChangesAsync();
+        Check(!await access.HasPermission(customer,facility,"XEM_LICH"),"A03: inactive membership denies existing grant");
+        Check(await access.CanManage(owner,facility) && await access.HasPermission(owner,facility,"XEM_LICH"),"A03: actual facility owner retains access");
+        Check(!await access.CanManage(owner,facility+99999) && !await access.HasPermission(other,facility,"XEM_LICH"),"A03: unrelated users and foreign facility denied");
+        db.PhanQuyenThanhViens.Remove(granted); db.ThanhVienCoSos.Remove(member); await db.SaveChangesAsync();
+        return true;
+    });
     Check(await Scalar($"SELECT COUNT(*) FROM Thanh_Vien_Co_So WHERE co_so_id={facility} AND nguoi_dung_id={owner} AND vai_tro_noi_bo='CHU_SAN'")==1,"C01: owner membership created atomically");
     Check(await Scalar($"SELECT COUNT(*) FROM Nguoi_Dung_Vai_Tro n JOIN Vai_Tro v ON v.id=n.vai_tro_id WHERE n.nguoi_dung_id={owner} AND v.ma_vai_tro='CHU_SAN'")==1,"C01: owner global role linked");
     await Reject(()=>Run(db=>new FacilityService(db).SaveFacility(other,new FacilityForm { Id=facility,Name="Attack",Address="Attack" })),"A03/C01: cross-owner editing rejected");
@@ -107,7 +153,8 @@ try
     start.ArgumentList.Add(Path.Combine(AppContext.BaseDirectory,"QuanLySanBai.dll")); start.ArgumentList.Add("--contentRoot"); start.ArgumentList.Add(Path.Combine(root,"QuanLySanBai")); start.ArgumentList.Add("--urls"); start.ArgumentList.Add("http://127.0.0.1:"+port);
     start.Environment["ConnectionStrings__DefaultConnection"]=connection; start.Environment["ASPNETCORE_ENVIRONMENT"]="Development"; start.Environment["Booking__ExpiryIntervalSeconds"]="5";
     server=Process.Start(start)!; var log=new System.Collections.Concurrent.ConcurrentQueue<string>(); server.OutputDataReceived+=(_,e)=>{if(e.Data!=null)log.Enqueue(e.Data);}; server.ErrorDataReceived+=(_,e)=>{if(e.Data!=null)log.Enqueue(e.Data);}; server.BeginOutputReadLine(); server.BeginErrorReadLine();
-    using var client=new HttpClient(new HttpClientHandler { AllowAutoRedirect=false,CookieContainer=new CookieContainer() }) { BaseAddress=new Uri("http://127.0.0.1:"+port) };
+    var handler=new HttpClientHandler { AllowAutoRedirect=false,CookieContainer=new CookieContainer() };
+    using var client=new HttpClient(handler) { BaseAddress=new Uri("http://127.0.0.1:"+port) };
     bool ready=false; for(int i=0;i<60;i++) { try { if((await client.GetAsync("/Account/Login")).StatusCode==HttpStatusCode.OK) { ready=true; break; } } catch(HttpRequestException) { } await Task.Delay(250); }
     Check(ready,"HTTP server starts");
     async Task<HttpResponseMessage> Post(string action,Dictionary<string,string> values,string tokenPath)
@@ -129,20 +176,64 @@ try
     var winner=stored.NguoiDungId;
     if(winner!=customer) Check((int)(await client.GetAsync("/Bookings/Details/"+order)).StatusCode==404,"B04: other customer's order hidden");
     Check((int)(await client.GetAsync("/CoSo/Configuration/Index/"+facility)).StatusCode==302,"A03/C01: non-owner configuration forbidden");
+    using var calendarSocket=await OpenSocket(client.BaseAddress!);
+    await SendSocket(calendarSocket,$"{{\"type\":1,\"invocationId\":\"watch\",\"target\":\"WatchCourt\",\"arguments\":[{court}]}}");
+    var subscription=await ReadSocket(calendarSocket,"\"invocationId\":\"watch\"");
+    Check(!subscription.Contains("error"),"Realtime: public court subscription accepted");
     response=await Post("/Bookings/Create",new() { ["CourtId"]=court.ToString(),["SlotId"]=slot.ToString(),["Date"]=tomorrow.AddDays(2).ToString("yyyy-MM-dd"),["Price"]="1",["NguoiDungId"]=owner.ToString() },detail);
+    Check((await ReadSocket(calendarSocket,"CalendarChanged")).Contains("CalendarChanged"),"Realtime: committed HTTP booking notifies court viewers");
     Check((int)response.StatusCode==302,"B03: HTTP booking redirects to created order");
     var createdId=long.Parse(response.Headers.Location!.ToString().Split('/').Last());
     var created=await With(db=>db.DonDatSans.SingleAsync(d=>d.Id==createdId)); Check(created.NguoiDungId==customer && created.TongTienPhaiTra==123456.78m,"B03: forged price and identity ignored");
     await Sql($"UPDATE Don_Dat_San SET thoi_gian_het_han_giu_cho=DATEADD(MINUTE,-1,DATEADD(HOUR,7,SYSUTCDATETIME())) WHERE id={createdId}");
     for(int i=0;i<20 && await Scalar($"SELECT COUNT(*) FROM Don_Dat_San WHERE id={createdId} AND trang_thai='HET_HAN'")==0;i++) await Task.Delay(500);
     Check(await Scalar($"SELECT COUNT(*) FROM Don_Dat_San WHERE id={createdId} AND trang_thai='HET_HAN'")==1,"B04: background worker releases expired holds");
+    Check((await ReadSocket(calendarSocket,"CalendarChanged")).Contains("CalendarChanged"),"Realtime: expired hold notifies court viewers");
     response=await Post("/Bookings/Create",new() { ["CourtId"]=court.ToString(),["SlotId"]=slot.ToString(),["Date"]=VietnamTime.Today.AddDays(-1).ToString("yyyy-MM-dd") },detail);
-    var error=await response.Content.ReadAsStringAsync(); Check((int)response.StatusCode==400 && !error.Contains("SqlException") && !error.Contains("Server=(localdb)"),"N04: SQL business errors are safe views");
+    Check((int)response.StatusCode==302 && response.Headers.Location!.ToString().StartsWith("/Courts/Details/"),"N04: invalid booking redirects back to calendar");
+    var error=await client.GetStringAsync(response.Headers.Location);
+    Check(!error.Contains("SqlException") && !error.Contains("Server=(localdb)") && error.Contains("alert"),"N04: redirected business error is safely displayed");
     await Post("/Account/Logout",new(),"/Account/Profile");
     await Post("/Account/Login",new() { ["Login"]="0988000001",["Password"]="Cluster4Test123!" },"/Account/Login");
     var ownerHtml=WebUtility.HtmlDecode(await client.GetStringAsync("/CoSo"));
     Check(ownerHtml.Contains("Quản lý sân và cấu hình") && ownerHtml.Contains("Quản lý nhân viên") && !ownerHtml.Contains("href=\"/Admin"),"UI: owner sees own management actions");
     foreach(var path in new[] {"/CoSo/Configuration/Index/"+facility,"/CoSo/Configuration/Facility/"+facility,"/CoSo/Configuration/Court?facilityId="+facility,"/CoSo/Configuration/Policy?facilityId="+facility}) { var r=await client.GetAsync(path); if((int)r.StatusCode!=200) Console.WriteLine(await r.Content.ReadAsStringAsync()); Check((int)r.StatusCode==200,"C01-C06 view renders "+path); }
+    await With(async db => {
+        var member=new ThanhVienCoSo { CoSoId=facility,NguoiDungId=other,VaiTroNoiBo="QUAN_LY",TrangThaiHoatDong=true,NgayThamGia=VietnamTime.Now };
+        member.PhanQuyenThanhViens.Add(new PhanQuyenThanhVien { QuyenHanId=(await db.QuyenHans.SingleAsync(q=>q.MaQuyen=="QUAN_LY_THANH_VIEN")).Id });
+        db.ThanhVienCoSos.Add(member); await db.SaveChangesAsync(); return true;
+    });
+    await Post("/Account/Logout",new(),"/Account/Profile");
+    await Post("/Account/Login",new() { ["Login"]="0988000003",["Password"]="Cluster4Test123!" },"/Account/Login");
+    var membersPath="/CoSo/Members?coSoId="+facility;
+    Check((int)(await client.GetAsync(membersPath)).StatusCode==200,"A03 HTTP: explicitly granted manager can open members");
+    await With(async db => {
+        var grants=await db.PhanQuyenThanhViens.Where(p=>p.ThanhVienCoSo.CoSoId==facility && p.ThanhVienCoSo.NguoiDungId==other).ToListAsync();
+        db.RemoveRange(grants); await db.SaveChangesAsync(); return true;
+    });
+    Check(!WebUtility.HtmlDecode(await client.GetStringAsync("/CoSo")).Contains("Quản lý nhân viên"),"A03 HTTP: revoked manager menu hidden in same session");
+    response=await client.GetAsync(membersPath);
+    Check((int)response.StatusCode==302 && response.Headers.Location!.ToString().Contains("/Account/Denied"),"A03 HTTP: direct members URL denied after revocation");
+    response=await Post("/CoSo/Members/Add",new() { ["coSoId"]=facility.ToString(),["phone"]="0988000002" },"/Account/Profile");
+    Check((int)response.StatusCode==302 && response.Headers.Location!.ToString().Contains("/Account/Denied"),"A03 HTTP: forged member POST denied after revocation");
+    using var staffSocket=await OpenSocket(client.BaseAddress!,handler.CookieContainer);
+    using var unrelatedSocket=await OpenSocket(client.BaseAddress!);
+    var staffMemberId=await Scalar($"SELECT id FROM Thanh_Vien_Co_So WHERE co_so_id={facility} AND nguoi_dung_id={other}");
+    var managementId=await Scalar("SELECT id FROM Quyen_Han WHERE ma_quyen='QUAN_LY_THANH_VIEN'");
+    await Post("/Account/Logout",new(),"/Account/Profile");
+    await Post("/Account/Login",new() { ["Login"]="0988000001",["Password"]="Cluster4Test123!" },"/Account/Login");
+    var staffFields=new Dictionary<string,string> { ["coSoId"]=facility.ToString(),["memberId"]=staffMemberId.ToString(),["vaiTro"]="QUAN_LY",["active"]="true",["permissions"]=managementId.ToString() };
+    await Post("/CoSo/Members/Update",staffFields,membersPath);
+    Check((await ReadSocket(staffSocket,"PermissionsChanged")).Contains("PermissionsChanged"),"Realtime: permission grant targets existing staff session");
+    staffFields.Remove("permissions");
+    await Post("/CoSo/Members/Update",staffFields,membersPath);
+    Check((await ReadSocket(staffSocket,"PermissionsChanged")).Contains("PermissionsChanged"),"Realtime: permission revocation targets existing staff session");
+    try { await ReadSocket(unrelatedSocket,"PermissionsChanged"); throw new Exception("Permission notification leaked to unrelated connection"); }
+    catch(OperationCanceledException) { Check(true,"Realtime: unrelated connection receives no permission notification"); }
+    await With(async db => {
+        db.ThanhVienCoSos.Remove(await db.ThanhVienCoSos.SingleAsync(m=>m.CoSoId==facility && m.NguoiDungId==other));
+        await db.SaveChangesAsync(); return true;
+    });
     await Post("/Account/Logout",new(),"/Account/Profile"); await Post("/Account/Login",new() { ["Login"]="0988000004",["Password"]="Cluster4Test123!" },"/Account/Login");
     var adminHtml=WebUtility.HtmlDecode(await client.GetStringAsync("/Admin"));
     Check(adminHtml.Contains("Quản trị viên") && !adminHtml.Contains("href=\"/Courts\"") && !adminHtml.Contains("href=\"/Bookings\"") && !adminHtml.Contains("href=\"/CoSo\""),"UI: admin sees management navigation only");
