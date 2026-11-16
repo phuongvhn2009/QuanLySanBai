@@ -41,4 +41,4 @@ Runner tạo database tên ngẫu nhiên QuanLySanBai_Cluster4Tests_<GUID>, cài
 - Giao diện trực quan và chạy demo thủ công với nhân viên thực.
 - Cụm này chưa chứng minh vận hành production, khả năng chịu tải hoặc tích hợp thanh toán ngân hàng. Hoàn tiền/hủy có phí, ví và cổng thanh toán vẫn thuộc phần mở rộng.
 
-Kết quả được bàn giao Chờ kiểm tra trên Notion, chưa tự xác nhận Hoàn thành thay người dùng. Code cụm 5–6 chưa commit/push.
+Kết quả được bàn giao Chờ kiểm tra trên Notion, chưa tự xác nhận Hoàn thành thay người dùng. Code cụm 5–6 đã được commit, push lên nhánh `MQ-KiemThuCotLoi` và chạy lại đạt 106/106 kiểm tra SQL/HTTP.

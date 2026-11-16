@@ -47,4 +47,4 @@ sqlcmd -S '(localdb)\MSSQLLocalDB' -E -C -d QuanLySanBai -i Data/Updates/001_Ord
 
 ## Kiểm chứng
 
-Bộ SQL/HTTP chung qua 106 kiểm tra trong lần chạy mở rộng, gồm nghiệp vụ cụm 5. Chi tiết ở Q01-Q02-review.md. Giao diện đã kiểm tra đáp ứng HTTP, chưa kiểm tra ảnh render trực quan. Chờ người dùng duyệt và xác nhận trên Notion. Thay đổi cụm 5–6 chưa commit/push.
+Bộ SQL/HTTP chung qua 106 kiểm tra trong lần chạy mở rộng, gồm nghiệp vụ cụm 5. Chi tiết ở Q01-Q02-review.md. Giao diện đã kiểm tra đáp ứng HTTP, chưa kiểm tra ảnh render trực quan. Chờ người dùng duyệt và xác nhận trên Notion. Thay đổi cụm 5–6 đã được commit và push lên nhánh `MQ-KiemThuCotLoi`.
