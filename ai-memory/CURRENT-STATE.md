@@ -1,14 +1,14 @@
 # Trạng thái bàn giao
 
-Cập nhật: 2026-11-14, Asia/Saigon. Đây là ảnh chụp trạng thái tại lúc ghi.
+Cập nhật: 2026-11-16, Asia/Saigon. Đây là ảnh chụp trạng thái tại lúc ghi.
 
 ## Git
 
 - Repo: https://github.com/phuongvhn2009/QuanLySanBai.git
-- Nhánh đang làm: `master`, commit `0a8233f` (kế thừa `59083dd`, đã commit sửa phân quyền cơ sở, đồng bộ SignalR realtime, kiểm thử 101 assertions và tài liệu/ai-memory, đồng bộ `origin/master`).
-- Master chứa cụm 1–4, sửa giao diện/đặt sân từ GitHub, sửa phân quyền tường minh và đồng bộ SignalR realtime. Program.cs trên master chưa đăng ký OperationService.
-- Cụm 5: `MO-VanHanhDon`, commit `bab70be`, đã push, chưa merge master tại lần kiểm tra gần nhất.
-- Cụm 6: `MQ-KiemThuCotLoi`, commit `86ef359`, kế thừa cụm 5, đã push, chưa merge master.
+- Nhánh đang làm: `master` (kế thừa `56e4cc3` và đã merge `MQ-KiemThuCotLoi` `8abc588`, đồng bộ `origin/master`).
+- Master hiện chứa đầy đủ cụm 1–6 (bao gồm vận hành tại quầy, `OperationService`, phân quyền tường minh, kiểm tra duyệt cơ sở `DA_DUYET`, đồng bộ SignalR realtime và kiểm thử SQL/HTTP/WebSocket 148 assertions).
+- Cụm 5: `MO-VanHanhDon`, commit `f058a96` (nền `bab70be`), đã push và đã được hợp nhất qua `MQ-KiemThuCotLoi` vào `master`.
+- Cụm 6: `MQ-KiemThuCotLoi`, commit `8abc588`, kế thừa cụm 5 + sửa quyền `TAO_DON` trong SQL và cập nhật tài liệu, đã push và đã merge vào `master`.
 - Graphify: `Tools-Graphify`, commit `c85a38d`, kế thừa cụm 5–6, đã push, chưa merge master.
 - Các nhánh cụm 1–4: MA-TaiKhoanPhanQuyen, MC-CauHinhCoSo, MB-XemLichDatSan. Các cụm này đã merge master; một số nhánh trên GitHub đã có commit mới hơn nhánh local.
 
@@ -24,8 +24,8 @@ Cập nhật: 2026-11-14, Asia/Saigon. Đây là ảnh chụp trạng thái tạ
 - Cụm 2: A01–A04 — đăng ký, đăng nhập/cookie/hồ sơ, phân quyền và nhân viên.
 - Cụm 3: C01–C06 + A05 — cấu hình sân/cơ sở và quản trị.
 - Cụm 4: B01–B05 — lịch trống, đặt sân, hết hạn giữ chỗ, chống trùng.
-- Cụm 5 trên nhánh riêng: O01–O06 — đặt quầy, thu tiền, xác nhận cọc, check-in, hoàn tất, hủy và danh sách đơn.
-- Cụm 6 trên nhánh riêng: Q01–Q02 — kiểm thử SQL/HTTP. Lần chạy lịch sử báo 106 assertion đạt; không phải 106 test case xUnit. Chưa chạy lại sau cập nhật master ngày 13/11.
+- Cụm 5 (đã merge vào `master`): O01–O06 — đặt quầy, thu tiền, xác nhận cọc, check-in, hoàn tất, hủy và danh sách đơn.
+- Cụm 6 (đã merge vào `master`): Q01–Q02 — kiểm thử SQL/HTTP. Lần chạy trên `MQ-KiemThuCotLoi` (`86ef359`) đạt 106/106 assertions; sau khi merge vào `master` đạt 148/148 assertions (gồm cả nền tảng, duyệt cơ sở, SignalR và vận hành; đây là assertion trong console runner, không phải test case xUnit).
 - Cụm mở rộng thanh toán/hoàn tiền chưa triển khai đầy đủ. Đơn đã thu tiền không được hủy qua luồng hủy đơn chưa thanh toán.
 - Check-in trước 15 phút là giả định triển khai đang chờ người dùng duyệt.
 
@@ -67,3 +67,19 @@ Folder ai-memory đã được commit và push lên `origin/master` ngày 2026-1
 - Admin Review và SaveFacility gửi SignalR tới chủ/thành viên để cập nhật giao diện.
 - Build 0 lỗi/cảnh báo; 115 assertion SQL/HTTP/WebSocket đạt trên database tạm đã dọn. Kiểm tra cả hồ sơ chờ/từ chối, URL/POST bị chặn và mở lại sau duyệt. Chưa kiểm tra trực quan trên browser.
 - Thứ tự nghiệm thu: đăng ký → admin duyệt → cấu hình sân/nhân viên. Kết quả 101 checks là lịch sử trước bản sửa này.
+
+## Tích hợp Cụm 5–6 vào master (2026-11-16)
+
+- **Kiểm thử & cập nhật nhánh `MQ-KiemThuCotLoi`**:
+  - Chạy `Cluster4Checks` trên `MQ-KiemThuCotLoi` (`86ef359`, kế thừa `MO-VanHanhDon` `bab70be`): build 0 lỗi/0 cảnh báo, đạt **106/106 assertions** (database tạm `QuanLySanBai_Cluster4Tests_08ea4bcf04ed4813bfc8ee8d59e6acd2` đã xóa).
+  - Fast-forward `MO-VanHanhDon` (`f058a96`) và `MQ-KiemThuCotLoi` (`0467b71`); trên `MQ-KiemThuCotLoi`, cập nhật `Data/QuanLySanBai_SQLServer.sql` (`usp_DatSanMotKhung`) để kiểm tra tường minh `c.chu_so_huu_id = @nhan_vien_tao_id` hoặc quyền `TAO_DON` (bỏ bypass `CHU_SAN`/`QUAN_LY` nội bộ) và cập nhật trạng thái trong `docs/O01-O06-review.md`, `docs/Q01-Q02-review.md`. Đã commit `8abc588` và push lên `origin/MQ-KiemThuCotLoi`.
+- **Merge `MQ-KiemThuCotLoi` vào `master` (kế thừa `56e4cc3`)**:
+  - Giữ `Server=(localdb)\MSSQLLocalDB` trong `QuanLySanBai/appsettings.json`.
+  - Hợp nhất `Areas/CoSo/Views/Home/Facilities.cshtml` (giữ kiểm tra `DA_DUYET` và chỉ hiện nút `Lịch và đơn đặt` sau khi cơ sở đã duyệt + có quyền `XEM_LICH`).
+  - Hợp nhất `Controllers/BookingsController.cs` và `Views/Bookings/Details.cshtml` (giữ xử lý lỗi/redirect và badge của `master`, bổ sung action `Cancel` và khung hủy đơn chưa thu tiền).
+  - Cập nhật `Services/OperationService.cs` nhận `RealtimeUpdates? updates = null` và gửi `CalendarChanged` sau khi đặt quầy (`Counter`) hoặc hủy đơn (`Cancel`).
+  - Hợp nhất `tests/Cluster4Checks/Program.cs` gồm đầy đủ test duyệt cơ sở (`CHO_DUYET`/`TU_CHOI`), SignalR WebSocket, `OperationChecks` và HTTP `O01/O02/O03/O06`.
+- **Xác minh sau merge trên `master`**:
+  - Build `tests/Cluster4Checks/Cluster4Checks.csproj` (`-p:NuGetAudit=false`): **0 Warning(s), 0 Error(s)**.
+  - Chạy `Cluster4Checks`: đạt **148/148 assertions** (SQL + concurrency + HTTP + SignalR WebSocket) trên database tạm `QuanLySanBai_Cluster4Tests_c73b219e48744f10bceb9b6237954501`, đã dọn sạch. Chưa kiểm thử trực quan trên trình duyệt.
+- **Lưu ý triển khai**: Database local/production đã cài trước đó cần đảm bảo đã áp dụng `Data/Updates/001_OrderRowVersion.sql` và cập nhật lại stored procedure `dbo.usp_DatSanMotKhung` theo `Data/QuanLySanBai_SQLServer.sql` mới nhất.

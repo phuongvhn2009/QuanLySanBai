@@ -262,6 +262,7 @@ CREATE TABLE [dbo].[Lich_Khoa_San] (
 
 -- Don_Dat_San
 CREATE TABLE [dbo].[Don_Dat_San] (
+    [row_version] rowversion NOT NULL,
     [id] bigint IDENTITY(1,1) NOT NULL CONSTRAINT [PK_Don_Dat_San] PRIMARY KEY,
     [ma_dat_san] nvarchar(30) NOT NULL CONSTRAINT [DF_Don_Dat_San_ma_dat_san] DEFAULT (LEFT(REPLACE(CONVERT(nvarchar(36), NEWID()), N'-', N''), 30)),
     [nguoi_dung_id] bigint NULL,
@@ -1539,10 +1540,11 @@ BEGIN
         ) THROW 51309, N''Người dùng không tồn tại hoặc đang bị khóa đặt sân.'', 1;
         IF @nhan_vien_tao_id IS NOT NULL AND NOT EXISTS (
             SELECT 1 FROM dbo.Thanh_Vien_Co_So m WITH (UPDLOCK,HOLDLOCK)
+            JOIN dbo.Co_So c ON c.id=m.co_so_id
             JOIN dbo.Nguoi_Dung u ON u.id=m.nguoi_dung_id
             WHERE m.co_so_id=@co_so_id AND m.nguoi_dung_id=@nhan_vien_tao_id
               AND m.trang_thai_hoat_dong=1 AND u.trang_thai=1
-              AND (m.vai_tro_noi_bo IN (N''CHU_SAN'',N''QUAN_LY'') OR EXISTS (
+              AND (c.chu_so_huu_id=@nhan_vien_tao_id OR EXISTS (
                   SELECT 1 FROM dbo.Phan_Quyen_Thanh_Vien p JOIN dbo.Quyen_Han q ON q.id=p.quyen_han_id
                   WHERE p.thanh_vien_co_so_id=m.id AND q.ma_quyen=N''TAO_DON''))
         ) THROW 51310, N''Nhân viên chưa có quyền tạo đơn tại cơ sở.'', 1;

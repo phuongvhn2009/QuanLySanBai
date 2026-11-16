@@ -16,7 +16,7 @@
     <div class="alert alert-info py-2" role="status">
         Giữ chỗ còn: <strong id="countdown" data-seconds="@remaining"></strong>
     </div>
-    <p class="text-muted small">Hạn giữ chỗ theo giờ Việt Nam: @Model.ThoiGianHetHanGiuCho?.ToString("dd/MM/yyyy HH:mm:ss"). Hết hạn sẽ tự giải phóng. Chức năng thanh toán thuộc cụm tiếp theo.</p>
+    <p class="text-muted small">Hạn giữ chỗ theo giờ Việt Nam: @Model.ThoiGianHetHanGiuCho?.ToString("dd/MM/yyyy HH:mm:ss"). Hết hạn sẽ tự giải phóng. Bạn có thể liên hệ cơ sở để thanh toán tại quầy trước hạn giữ chỗ.</p>
 }
 @foreach (var c in Model.ChiTietDatSans)
 {
@@ -29,6 +29,18 @@
             <p class="mb-0 text-muted small">@f.SoGioTuTruocTran–@(f.SoGioDenTruocTran?.ToString() ?? "∞") giờ: hủy @f.TiLePhiHuy.ToString("0.##")%, đổi @f.TiLePhiDoi.ToString("0.##")%</p>
         }
     </div>
+}
+@if ((bool)(ViewBag.CanCancel ?? false) && Model.TrangThai is "CHO_THANH_TOAN" or "DA_XAC_NHAN")
+{
+    <details class="editor-section mb-3">
+        <summary>Yêu cầu hủy đơn chưa thu tiền</summary>
+        <form asp-action="Cancel" method="post" data-confirm="Hủy đơn và giải phóng khung giờ?" class="mt-2">
+            <input name="Id" value="@Model.Id" type="hidden" />
+            <input name="Version" value="@Convert.ToBase64String(Model.RowVersion)" type="hidden" />
+            <label class="form-label">Lý do <input name="Reason" class="form-control" required maxlength="1000" /></label>
+            <button class="btn btn-outline-danger">Hủy đơn</button>
+        </form>
+    </details>
 }
 @section Scripts {
     <script>
