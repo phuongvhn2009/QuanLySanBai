@@ -1,9 +1,11 @@
+using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using QuanLySanBai.Controllers;
@@ -14,6 +16,25 @@ using QuanLySanBai.ViewModels;
 using QuanLySanBai.Areas.CoSo.Controllers;
 using QuanLySanBai.Areas.Admin.Controllers;
 
+await using (var masterConn = new SqlConnection("Server=(localdb)\\MSSQLLocalDB;Database=master;Trusted_Connection=True;TrustServerCertificate=True"))
+{
+    await masterConn.OpenAsync();
+    await using var checkCmd = new SqlCommand("SELECT DB_ID(N'QuanLySanBai')", masterConn);
+    if (await checkCmd.ExecuteScalarAsync() is null or DBNull)
+    {
+        var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+        if (!File.Exists(Path.Combine(root, "Data", "QuanLySanBai_SQLServer.sql"))) root = Directory.GetCurrentDirectory();
+        var script = await File.ReadAllTextAsync(Path.Combine(root, "Data", "QuanLySanBai_SQLServer.sql"));
+        foreach (var batch in Regex.Split(script, @"^GO\s*$", RegexOptions.Multiline | RegexOptions.IgnoreCase))
+            if (!string.IsNullOrWhiteSpace(batch)) { await using var cmd = new SqlCommand(batch, masterConn) { CommandTimeout = 120 }; await cmd.ExecuteNonQueryAsync(); }
+        var updatePath = Path.Combine(root, "Data", "Updates", "001_OrderRowVersion.sql");
+        if (File.Exists(updatePath))
+        {
+            var updateSql = "USE [QuanLySanBai];\n" + await File.ReadAllTextAsync(updatePath);
+            await using var cmd = new SqlCommand(updateSql, masterConn); await cmd.ExecuteNonQueryAsync();
+        }
+    }
+}
 var options = new DbContextOptionsBuilder<QuanLySanBaiContext>().UseSqlServer("Server=(localdb)\\MSSQLLocalDB;Database=QuanLySanBai;Trusted_Connection=True;TrustServerCertificate=True").Options;
 await using var db = new QuanLySanBaiContext(options);
 await using var tx = await db.Database.BeginTransactionAsync();
@@ -29,14 +50,23 @@ T Setup<T>(T c, NguoiDung? user = null) where T : Controller {
     c.TempData = new TempDataDictionary(http, new MemoryTemp());
     return c;
 }
-async Task<NguoiDung> Register(string phone) {
+async Task<NguoiDung> Register(string phone, string? email = null) {
     var c = Setup(new AccountController(db, hasher));
-    var r = await c.Register(new RegisterModel { HoVaTen = "Kiểm thử", SoDienThoai = phone, Email = phone + "@example.test", Password = "TestPassword123!", ConfirmPassword = "TestPassword123!" });
+    var r = await c.Register(new RegisterModel { HoVaTen = "Kiểm thử", SoDienThoai = phone, Email = email ?? (phone + "@gmail.com"), Password = "TestPassword123!", ConfirmPassword = "TestPassword123!" });
     Check(r is RedirectToActionResult, "Register " + phone);
     return await db.NguoiDungs.Include(u => u.NguoiDungVaiTros).ThenInclude(r => r.VaiTro).SingleAsync(u => u.SoDienThoai == phone);
 }
 try {
-    var owner = await Register("0999000001"); var staff = await Register("0999000002"); var stranger = await Register("0999000003");
+    var owner = await Register("0999000001", "example@gmail.com"); var staff = await Register("0999000002", "nguyenvana@gmail.com"); var stranger = await Register("0999000003", "bao123@gmail.com");
+    Check(owner.Email == "example@gmail.com" && staff.Email == "nguyenvana@gmail.com" && stranger.Email == "bao123@gmail.com", "Valid Gmail accounts saved to database");
+    foreach (var badEmail in new[] { "examplegmail.com", "example@gmail", "example@yahoo.com", "example@gmail.vn", "@gmail.com", "example@.com", "" })
+    {
+        var invalidCtrl = Setup(new AccountController(db, hasher));
+        var invalidRes = await invalidCtrl.Register(new RegisterModel { HoVaTen = "Email lỗi", SoDienThoai = "0999000099", Email = badEmail, Password = "TestPassword123!", ConfirmPassword = "TestPassword123!" });
+        var emailErrors = invalidCtrl.ModelState[nameof(RegisterModel.Email)]?.Errors.Select(e => e.ErrorMessage).ToList() ?? [];
+        Check(invalidRes is ViewResult && !invalidCtrl.ModelState.IsValid && emailErrors.Contains(ProfileModel.GmailErrorMessage), "Invalid Gmail rejected with message: " + (badEmail.Length == 0 ? "<empty>" : badEmail));
+        Check(!await db.NguoiDungs.AnyAsync(u => u.SoDienThoai == "0999000099"), "Invalid Gmail user not saved: " + (badEmail.Length == 0 ? "<empty>" : badEmail));
+    }
     Check(owner.MatKhauHash != "TestPassword123!" && hasher.VerifyHashedPassword(owner, owner.MatKhauHash, "TestPassword123!") != PasswordVerificationResult.Failed, "Password hashed and verifiable");
     Check(owner.NguoiDungVaiTros.Single().VaiTro.MaVaiTro == "KHACH_HANG", "Registration grants customer only");
     var duplicate = Setup(new AccountController(db, hasher));
@@ -98,7 +128,14 @@ if (args.Length > 0)
     }
     try
     {
-        var response = await Post("/Account/Register", new() { ["HoVaTen"]="HTTP test", ["SoDienThoai"]=phone, ["Password"]="HttpTest123!", ["ConfirmPassword"]="HttpTest123!", ["Role"]="ADMIN" });
+        foreach (var badEmail in new[] { "examplegmail.com", "example@gmail", "example@yahoo.com", "example@gmail.vn", "@gmail.com", "example@.com", "" })
+        {
+            var badResp = await Post("/Account/Register", new() { ["HoVaTen"]="HTTP bad email", ["SoDienThoai"]=phone, ["Email"]=badEmail, ["Password"]="HttpTest123!", ["ConfirmPassword"]="HttpTest123!" });
+            var badHtml = System.Net.WebUtility.HtmlDecode(await badResp.Content.ReadAsStringAsync());
+            Check((int)badResp.StatusCode == 200 && badHtml.Contains(ProfileModel.GmailErrorMessage), "HTTP invalid Gmail rejected: " + (badEmail.Length == 0 ? "<empty>" : badEmail));
+            Check(!await httpDb.NguoiDungs.AnyAsync(u => u.SoDienThoai == phone), "HTTP invalid Gmail not persisted: " + (badEmail.Length == 0 ? "<empty>" : badEmail));
+        }
+        var response = await Post("/Account/Register", new() { ["HoVaTen"]="HTTP test", ["SoDienThoai"]=phone, ["Email"]=$"httptest{phone}@gmail.com", ["Password"]="HttpTest123!", ["ConfirmPassword"]="HttpTest123!", ["Role"]="ADMIN" });
         Check((int)response.StatusCode == 302, "HTTP register");
         fixture = await httpDb.NguoiDungs.SingleAsync(u => u.SoDienThoai == phone);
         Check(!await httpDb.NguoiDungVaiTros.AnyAsync(r => r.NguoiDungId == fixture.Id && r.VaiTro.MaVaiTro == "ADMIN"), "Forged registration role ignored");
@@ -109,7 +146,7 @@ if (args.Length > 0)
         Check((await client.GetStringAsync("/Account/Profile")).Contains(phone), "HTTP profile rendered for current user");
         var adminRole = await httpDb.VaiTros.SingleAsync(r => r.MaVaiTro == "ADMIN");
         httpDb.NguoiDungVaiTros.Add(new NguoiDungVaiTro { NguoiDungId=fixture.Id, VaiTroId=adminRole.Id, NgayGan=DateTime.Now });
-        fixtureFacility = new CoSo { ChuSoHuuId=fixture.Id, TenCoSo="HTTP fixture", DiaChi="Test", GioMoCua=new TimeOnly(6,0), GioDongCua=new TimeOnly(22,0), TrangThaiDuyet="CHO_DUYET", DangHoatDong=true, NgayTao=DateTime.Now, NgayCapNhat=DateTime.Now };
+        fixtureFacility = new CoSo { ChuSoHuuId=fixture.Id, TenCoSo="HTTP fixture", DiaChi="Test", GioMoCua=new TimeOnly(6,0), GioDongCua=new TimeOnly(22,0), TrangThaiDuyet="DA_DUYET", DangHoatDong=true, NgayTao=DateTime.Now, NgayCapNhat=DateTime.Now };
         httpDb.CoSos.Add(fixtureFacility); await httpDb.SaveChangesAsync();
         Check((int)(await client.GetAsync("/Admin/Management/Users")).StatusCode == 200, "HTTP admin user list renders");
         Check((int)(await client.GetAsync("/Admin/Management/Facilities")).StatusCode == 200, "HTTP admin facility list renders");

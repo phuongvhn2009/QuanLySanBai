@@ -1,10 +1,60 @@
 @model QuanLySanBai.ViewModels.RegisterModel
 @{ ViewData["Title"] = "Đăng ký"; }
 <h1>Đăng ký tài khoản</h1>
-<form method="post" class="col-md-6">
+<form method="post" class="col-md-6" id="registerForm">
 <div asp-validation-summary="All" class="text-danger" role="alert"></div>
 <partial name="_ProfileFields" model="Model" />
 <div class="mb-3"><label asp-for="Password"></label><input asp-for="Password" class="form-control" autocomplete="new-password" /><span asp-validation-for="Password" class="text-danger"></span></div>
 <div class="mb-3"><label asp-for="ConfirmPassword"></label><input asp-for="ConfirmPassword" class="form-control" autocomplete="new-password" /><span asp-validation-for="ConfirmPassword" class="text-danger"></span></div>
-<button class="btn btn-primary">Đăng ký</button> <a asp-action="Login">Đã có tài khoản? Đăng nhập</a>
+<button type="submit" class="btn btn-primary">Đăng ký</button> <a asp-action="Login">Đã có tài khoản? Đăng nhập</a>
 </form>
+@section Scripts {
+<partial name="_ValidationScriptsPartial" />
+<script>
+(() => {
+    const form = document.getElementById('registerForm');
+    const emailInput = document.getElementById('Email');
+    if (!form || !emailInput) return;
+    const gmailRegex = /^[a-zA-Z0-9]+([._%+-][a-zA-Z0-9]+)*@@gmail\.com$/;
+    const errorMessage = 'Vui lòng nhập địa chỉ Gmail hợp lệ (example@gmail.com)';
+    const errorSpan = form.querySelector('[data-valmsg-for="Email"]');
+
+    function validateGmail() {
+        const normalized = (emailInput.value || '').trim().toLowerCase();
+        if (emailInput.value !== normalized && normalized.length > 0) {
+            emailInput.value = normalized;
+        }
+        const isValid = gmailRegex.test(normalized);
+        if (!isValid) {
+            if (errorSpan) {
+                errorSpan.textContent = errorMessage;
+                errorSpan.classList.remove('field-validation-valid');
+                errorSpan.classList.add('field-validation-error');
+            }
+            emailInput.classList.add('input-validation-error');
+        } else {
+            if (errorSpan) {
+                errorSpan.textContent = '';
+                errorSpan.classList.remove('field-validation-error');
+                errorSpan.classList.add('field-validation-valid');
+            }
+            emailInput.classList.remove('input-validation-error');
+        }
+        return isValid;
+    }
+
+    emailInput.addEventListener('blur', validateGmail);
+    emailInput.addEventListener('input', () => {
+        if (emailInput.classList.contains('input-validation-error')) {
+            validateGmail();
+        }
+    });
+    form.addEventListener('submit', event => {
+        if (!validateGmail()) {
+            event.preventDefault();
+            emailInput.focus();
+        }
+    });
+})();
+</script>
+}
