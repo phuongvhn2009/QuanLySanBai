@@ -8,7 +8,10 @@ document.addEventListener('submit', event => {
     const section = form.closest('details.config-section');
     const summary = section?.querySelector('summary')?.textContent;
     if (summary) sessionStorage.setItem(sectionKey, summary);
-    setTimeout(() => form.querySelectorAll('button[type="submit"], button:not([type])').forEach(b => b.disabled = true), 0);
+    setTimeout(() => {
+        if (event.defaultPrevented) return;
+        form.querySelectorAll('button[type="submit"], button:not([type])').forEach(b => b.disabled = true);
+    }, 0);
 });
 const sections = [...document.querySelectorAll('details.config-section')];
 const facilityInput = document.querySelector('details.config-section input[name="FacilityId"], details.config-section input[name="facilityId"], input[name="id"]');

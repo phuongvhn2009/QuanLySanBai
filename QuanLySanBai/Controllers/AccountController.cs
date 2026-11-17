@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -12,10 +13,17 @@ namespace QuanLySanBai.Controllers;
 
 public class AccountController(QuanLySanBaiContext db, IPasswordHasher<NguoiDung> hasher) : Controller
 {
+    private static readonly Regex PhoneRegex = new(@"^0[0-9]{9}$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private static readonly Regex GmailRegex = new(ProfileModel.GmailPattern, RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    public static bool IsValidGmail(string? email) =>
+        !string.IsNullOrWhiteSpace(email) && email.Length <= 255 && GmailRegex.IsMatch(email.Trim().ToLowerInvariant());
+
     [HttpGet] public IActionResult Register() => View(new RegisterModel());
     [HttpPost] public async Task<IActionResult> Register(RegisterModel model)
     {
         Normalize(model);
+        ValidateRegistration(model);
         await CheckDuplicates(model);
         if (!ModelState.IsValid) return View(model);
         var role = await db.VaiTros.SingleOrDefaultAsync(r => r.MaVaiTro == "KHACH_HANG");
@@ -68,6 +76,38 @@ public class AccountController(QuanLySanBaiContext db, IPasswordHasher<NguoiDung
     }
     [HttpGet] public IActionResult Denied() { Response.StatusCode = 403; return View(); }
     private static void Normalize(ProfileModel m) { m.HoVaTen = (m.HoVaTen ?? "").Trim(); m.SoDienThoai = (m.SoDienThoai ?? "").Trim(); m.Email = string.IsNullOrWhiteSpace(m.Email) ? null : m.Email.Trim().ToLowerInvariant(); }
+    private void ValidateRegistration(RegisterModel m)
+    {
+        if (string.IsNullOrWhiteSpace(m.HoVaTen) || m.HoVaTen.Length > 100)
+        {
+            ModelState.Remove(nameof(m.HoVaTen));
+            ModelState.AddModelError(nameof(m.HoVaTen), "Vui lòng nhập họ và tên.");
+        }
+        if (!PhoneRegex.IsMatch(m.SoDienThoai))
+        {
+            ModelState.Remove(nameof(m.SoDienThoai));
+            ModelState.AddModelError(nameof(m.SoDienThoai), "Số điện thoại gồm 10 chữ số, bắt đầu bằng 0.");
+        }
+        if (!IsValidGmail(m.Email))
+        {
+            ModelState.Remove(nameof(m.Email));
+            ModelState.AddModelError(nameof(m.Email), ProfileModel.GmailErrorMessage);
+        }
+        else
+        {
+            ModelState.Remove(nameof(m.Email));
+        }
+        if (string.IsNullOrEmpty(m.Password) || m.Password.Length is < 8 or > 128)
+        {
+            ModelState.Remove(nameof(m.Password));
+            ModelState.AddModelError(nameof(m.Password), "Mật khẩu phải từ 8 đến 128 ký tự.");
+        }
+        if (!string.IsNullOrEmpty(m.ConfirmPassword) && m.ConfirmPassword != m.Password)
+        {
+            ModelState.Remove(nameof(m.ConfirmPassword));
+            ModelState.AddModelError(nameof(m.ConfirmPassword), "Mật khẩu xác nhận không khớp.");
+        }
+    }
     private async Task CheckDuplicates(ProfileModel m, long id = 0)
     {
         if (await db.NguoiDungs.AnyAsync(u => u.Id != id && u.SoDienThoai == m.SoDienThoai)) ModelState.AddModelError(nameof(m.SoDienThoai), "Số điện thoại đã được sử dụng.");
