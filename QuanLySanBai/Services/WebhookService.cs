@@ -22,7 +22,10 @@ public class WebhookService(
 
         if (!sePay.VerifyAuthorization(authorizationHeader))
         {
-            await SaveStandaloneLogAsync("SEPAY", null, null, null, null, null, null, null, "SAI_CHU_KY", "Xác thực Apikey thất bại.", rawBody, now);
+            var authNote = string.IsNullOrWhiteSpace(authorizationHeader)
+                ? "Thiếu header Authorization."
+                : $"Sai Apikey (nhận {authorizationHeader.Length} ký tự).";
+            await SaveStandaloneLogAsync("SEPAY", null, null, null, null, null, null, null, "SAI_CHU_KY", authNote, rawBody, now);
             return new WebhookProcessResult
             {
                 StatusCode = 401,

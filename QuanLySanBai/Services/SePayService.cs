@@ -10,6 +10,7 @@ namespace QuanLySanBai.Services;
 public class SePayService(IOptions<SePayOptions> options)
 {
     private static readonly Regex CodeRegex = new(@"\b(QSB[A-Z0-9]{6,40})\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex FallbackCodeRegex = new(@"(QSB(?:W[A-Z0-9]{12}|O\d+T[A-Z0-9]{8}))", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     public SePayOptions Settings => options.Value;
 
@@ -24,6 +25,9 @@ public class SePayService(IOptions<SePayOptions> options)
             return false;
 
         var incomingKey = authorizationHeader[prefix.Length..].Trim();
+        if (incomingKey.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            incomingKey = incomingKey[prefix.Length..].Trim();
+
         var expectedBytes = Encoding.UTF8.GetBytes(expectedKey);
         var incomingBytes = Encoding.UTF8.GetBytes(incomingKey);
 
@@ -61,25 +65,17 @@ public class SePayService(IOptions<SePayOptions> options)
 
     public string? ExtractPaymentCode(SePayWebhookPayload payload)
     {
-        if (!string.IsNullOrWhiteSpace(payload.Code))
+        string?[] candidates = [payload.Code?.Trim(), payload.Content, payload.Description];
+        foreach (var regex in (Regex[])[CodeRegex, FallbackCodeRegex])
         {
-            var codeMatch = CodeRegex.Match(payload.Code.Trim());
-            if (codeMatch.Success)
-                return codeMatch.Groups[1].Value.ToUpperInvariant();
-        }
-
-        if (!string.IsNullOrWhiteSpace(payload.Content))
-        {
-            var contentMatch = CodeRegex.Match(payload.Content);
-            if (contentMatch.Success)
-                return contentMatch.Groups[1].Value.ToUpperInvariant();
-        }
-
-        if (!string.IsNullOrWhiteSpace(payload.Description))
-        {
-            var descMatch = CodeRegex.Match(payload.Description);
-            if (descMatch.Success)
-                return descMatch.Groups[1].Value.ToUpperInvariant();
+            foreach (var candidate in candidates)
+            {
+                if (string.IsNullOrWhiteSpace(candidate))
+                    continue;
+                var match = regex.Match(candidate);
+                if (match.Success)
+                    return match.Groups[1].Value.ToUpperInvariant();
+            }
         }
 
         return null;

@@ -7,6 +7,7 @@ using QuanLySanBai.Models.Entities;
 using QuanLySanBai.Services;
 
 var builder = WebApplication.CreateBuilder(args.Where(a=>a!="--seed-demo").ToArray());
+builder.Configuration.AddUserSecrets<Program>(optional: true);
 builder.Services.AddSignalR();
 builder.Services.AddScoped<RealtimeUpdates>();
 
@@ -73,6 +74,17 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.Use(async (context, next) =>
+{
+    var path = context.Request.Path.Value;
+    if (!string.IsNullOrEmpty(path) && path.Contains("//", StringComparison.Ordinal))
+    {
+        while (path.Contains("//", StringComparison.Ordinal))
+            path = path.Replace("//", "/", StringComparison.Ordinal);
+        context.Request.Path = path;
+    }
+    await next();
+});
 app.UseRouting();
 
 app.UseAuthentication();
