@@ -530,26 +530,33 @@ public static class FinanceChecks
                 "F04 + O04: Check-in succeeds on rescheduled order");
         }
 
-        // F05. Withdrawal hold, reject (release), and approve (deduct)
+        // F05. Customer withdrawal blocked; Owner withdrawal hold, reject (release), and approve (deduct)
         long wdRejectId, wdApproveId;
         await using (var db = new QuanLySanBaiContext(options))
         {
             var ws = MakeWalletSvc(db);
-            wdRejectId = await ws.RequestWithdrawal(other, new WithdrawForm { Amount = 10000m, BankName = "MB Bank", AccountNumber = "0123456789", AccountHolder = "OTHER TEST" });
-            var w = await db.ViNguoiDungs.AsNoTracking().SingleAsync(x => x.NguoiDungId == other);
+            await Reject(() => ws.RequestWithdrawal(other, new WithdrawForm { Amount = 10000m, BankName = "MBBank", AccountNumber = "0123456789", AccountHolder = "OTHER TEST" }),
+                "F05: Customer withdrawal blocked");
+
+            var ownerTopupGw = await ws.CreateDepositQr(f2Owner, 50000m);
+            var ownerTopupCode = (await db.GiaoDichCongThanhToans.SingleAsync(g => g.Id == ownerTopupGw)).MaDonHangCong;
+            await MakeWebhookSvc(db).ProcessSePayWebhook(MakeWebhookJson(100095, 50000m, ownerTopupCode), "Apikey SEPAY_TEST_API_KEY_999");
+
+            wdRejectId = await ws.RequestWithdrawal(f2Owner, new WithdrawForm { Amount = 10000m, BankName = "MB Bank", AccountNumber = "0123456789", AccountHolder = "F2 OWNER" });
+            var w = await db.ViNguoiDungs.AsNoTracking().SingleAsync(x => x.NguoiDungId == f2Owner);
             Check(w.SoDuDongBang == 10000m, "F05: Withdrawal freezes funds");
         }
         await using (var db = new QuanLySanBaiContext(options))
         {
             var ws = MakeWalletSvc(db);
             await ws.ProcessWithdrawal(admin, new ProcessWithdrawalForm { RequestId = wdRejectId, Approve = false, RejectReason = "Sai tên chủ TK" });
-            var w = await db.ViNguoiDungs.AsNoTracking().SingleAsync(x => x.NguoiDungId == other);
+            var w = await db.ViNguoiDungs.AsNoTracking().SingleAsync(x => x.NguoiDungId == f2Owner);
             Check(w.SoDuDongBang == 0m, "F05: Rejected withdrawal releases frozen funds back to available");
 
-            wdApproveId = await ws.RequestWithdrawal(other, new WithdrawForm { Amount = 10000m, BankName = "MB Bank", AccountNumber = "0123456789", AccountHolder = "OTHER TEST" });
+            wdApproveId = await ws.RequestWithdrawal(f2Owner, new WithdrawForm { Amount = 10000m, BankName = "MB Bank", AccountNumber = "0123456789", AccountHolder = "F2 OWNER" });
             await ws.ProcessWithdrawal(admin, new ProcessWithdrawalForm { RequestId = wdApproveId, Approve = true });
             await Reject(() => ws.ProcessWithdrawal(admin, new ProcessWithdrawalForm { RequestId = wdApproveId, Approve = true }), "F05: Double withdrawal approval rejected");
-            w = await db.ViNguoiDungs.AsNoTracking().SingleAsync(x => x.NguoiDungId == other);
+            w = await db.ViNguoiDungs.AsNoTracking().SingleAsync(x => x.NguoiDungId == f2Owner);
             Check(w.SoDuDongBang == 0m && await scalar($"SELECT COUNT(*) FROM Yeu_Cau_Rut_Tien WHERE id={wdApproveId} AND trang_thai='THANH_CONG'") == 1,
                 "F05: Approved withdrawal deducts frozen funds once");
         }

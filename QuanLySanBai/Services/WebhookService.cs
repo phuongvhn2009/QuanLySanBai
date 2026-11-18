@@ -1,4 +1,5 @@
 using System.Data;
+using System.Text.RegularExpressions;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using QuanLySanBai.Data;
@@ -52,6 +53,14 @@ public class WebhookService(
 
         if (!string.Equals(payload.TransferType, "in", StringComparison.OrdinalIgnoreCase))
         {
+            if (string.Equals(payload.TransferType, "out", StringComparison.OrdinalIgnoreCase) &&
+                sePay.AccountMatches(payload.AccountNumber, payload.SubAccount))
+            {
+                var payoutResult = await TryConfirmOutgoingPayoutAsync(payload, rawBody, now);
+                if (payoutResult is not null)
+                    return payoutResult;
+            }
+
             await SaveStandaloneLogAsync("SEPAY", payload.Id, extractedCode, null, payload.TransferType, payload.AccountNumber, payload.TransferAmount, payload.Content, "BO_QUA_TIEN_RA", "Bỏ qua giao dịch không phải tiền vào.", rawBody, now);
             return new WebhookProcessResult
             {
@@ -508,5 +517,87 @@ public class WebhookService(
     {
         var sql = ex as SqlException ?? (ex as DbUpdateException)?.InnerException as SqlException;
         return sql is not null && (sql.Number == 2601 || sql.Number == 2627);
+    }
+
+    private async Task<WebhookProcessResult?> TryConfirmOutgoingPayoutAsync(SePayWebhookPayload payload, string rawBody, DateTime now)
+    {
+        var payoutId = ExtractPayoutRequestId(payload);
+        if (!payoutId.HasValue)
+            return null;
+
+        if (db.ChangeTracker.HasChanges())
+            db.ChangeTracker.Clear();
+
+        long? notifyUserId = null;
+        try
+        {
+            await using var tx = await db.Database.BeginTransactionAsync();
+            var request = await db.YeuCauRutTiens
+                .FromSqlInterpolated($"SELECT * FROM dbo.Yeu_Cau_Rut_Tien WITH (UPDLOCK, HOLDLOCK) WHERE id = {payoutId.Value}")
+                .SingleOrDefaultAsync();
+
+            if (request is null || request.TrangThai != "CHO_DUYET" || payload.TransferAmount < request.SoTien)
+            {
+                await tx.RollbackAsync();
+                return null;
+            }
+
+            var lockedWallet = await walletService.LockWalletByIdAsync(request.ViId);
+            if (lockedWallet.SoDuDongBang < request.SoTien)
+            {
+                await tx.RollbackAsync();
+                return null;
+            }
+
+            var endEntry = WalletService.CreateLedgerEntry(
+                lockedWallet,
+                "RUT",
+                request.SoTien,
+                $"WD:{request.Id}:RUT",
+                $"Chuyển khoản rút tiền #{request.Id} (SePay #{payload.Id})",
+                now);
+            db.GiaoDichVis.Add(endEntry);
+            await db.SaveChangesAsync();
+
+            request.NgayXuLy = now;
+            request.GiaoDichKetThucId = endEntry.Id;
+            request.TrangThai = "THANH_CONG";
+            db.NhatKyWebhooks.Add(BuildLog(payload, $"QSBP{request.Id}", null, "HOP_LE_DA_XU_LY", "Tự động duyệt rút tiền qua webhook tiền ra.", rawBody, now));
+            await db.SaveChangesAsync();
+            await tx.CommitAsync();
+
+            notifyUserId = lockedWallet.NguoiDungId;
+        }
+        catch (Exception ex) when (ex is DbUpdateException or SqlException && IsUniqueViolation(ex))
+        {
+            db.ChangeTracker.Clear();
+            return null;
+        }
+
+        if (updates is not null && notifyUserId.HasValue)
+            await updates.PaymentChanged(null, notifyUserId);
+
+        return new WebhookProcessResult
+        {
+            StatusCode = 200,
+            Success = true,
+            ProcessingStatus = "HOP_LE_DA_XU_LY",
+            Message = "Outgoing payout confirmed",
+            UserId = notifyUserId
+        };
+    }
+
+    private static readonly Regex PayoutRegex = new(@"QSBP(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static long? ExtractPayoutRequestId(SePayWebhookPayload payload)
+    {
+        foreach (var text in (string?[])[payload.Code, payload.Content, payload.Description])
+        {
+            if (string.IsNullOrWhiteSpace(text)) continue;
+            var m = PayoutRegex.Match(text);
+            if (m.Success && long.TryParse(m.Groups[1].Value, out var id) && id > 0)
+                return id;
+        }
+        return null;
     }
 }

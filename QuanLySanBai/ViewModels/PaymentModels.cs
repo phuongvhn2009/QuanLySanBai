@@ -181,6 +181,7 @@ public class WalletIndexVM
     public List<YeuCauRutTien> Withdrawals { get; set; } = [];
     public List<HoanTien> Refunds { get; set; } = [];
     public bool SePayConfigured { get; set; }
+    public bool CanWithdraw { get; set; }
 }
 
 public class DepositForm

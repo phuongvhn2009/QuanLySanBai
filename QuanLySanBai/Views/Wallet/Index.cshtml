@@ -36,34 +36,53 @@
     </div>
 </div>
 
-<details class="editor-section mb-4">
-    <summary>Yêu cầu rút tiền về tài khoản ngân hàng</summary>
-    <form asp-action="RutTien" method="post" class="mt-3 row g-3" data-confirm="Xác nhận tạo yêu cầu rút tiền? Số tiền yêu cầu sẽ được tạm đóng băng chờ Admin duyệt.">
-        <div class="col-md-3">
-            <label class="form-label w-100">Số tiền rút (đ)
-                <input type="number" name="Amount" min="10000" max="@Model.Wallet.SoDuKhaDung.ToString(System.Globalization.CultureInfo.InvariantCulture)" step="1000" class="form-control" required />
-            </label>
-        </div>
-        <div class="col-md-3">
-            <label class="form-label w-100">Tên ngân hàng
-                <input type="text" name="BankName" maxlength="100" placeholder="VD: MB Bank" class="form-control" required />
-            </label>
-        </div>
-        <div class="col-md-3">
-            <label class="form-label w-100">Số tài khoản
-                <input type="text" name="AccountNumber" maxlength="50" class="form-control" required />
-            </label>
-        </div>
-        <div class="col-md-3">
-            <label class="form-label w-100">Tên chủ tài khoản
-                <input type="text" name="AccountHolder" maxlength="100" class="form-control" required />
-            </label>
-        </div>
-        <div class="col-12">
-            <button type="submit" class="btn btn-outline-primary">Gửi yêu cầu rút tiền</button>
-        </div>
-    </form>
-</details>
+@if (Model.CanWithdraw)
+{
+    <details class="editor-section mb-4">
+        <summary>Yêu cầu rút tiền về tài khoản ngân hàng (Dành cho Chủ sân)</summary>
+        <form asp-action="RutTien" method="post" class="mt-3 row g-3" data-confirm="Xác nhận tạo yêu cầu rút tiền? Số tiền yêu cầu sẽ được tạm đóng băng chờ Admin duyệt.">
+            <div class="col-md-3">
+                <label class="form-label w-100">Số tiền rút (đ)
+                    <input type="number" name="Amount" min="10000" max="@Model.Wallet.SoDuKhaDung.ToString(System.Globalization.CultureInfo.InvariantCulture)" step="1000" class="form-control" required />
+                </label>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label w-100">Ngân hàng
+                    <select name="BankName" class="form-select" required>
+                        <option value="MBBank">MB Bank (MBBank)</option>
+                        <option value="VCB">Vietcombank (VCB)</option>
+                        <option value="TCB">Techcombank (TCB)</option>
+                        <option value="ICB">VietinBank (ICB)</option>
+                        <option value="BIDV">BIDV</option>
+                        <option value="ACB">ACB</option>
+                        <option value="VPB">VPBank (VPB)</option>
+                        <option value="TPB">TPBank (TPB)</option>
+                        <option value="STB">Sacombank (STB)</option>
+                    </select>
+                </label>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label w-100">Số tài khoản
+                    <input type="text" name="AccountNumber" maxlength="50" class="form-control" required />
+                </label>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label w-100">Tên chủ tài khoản
+                    <input type="text" name="AccountHolder" maxlength="100" class="form-control" required />
+                </label>
+            </div>
+            <div class="col-12">
+                <button type="submit" class="btn btn-outline-primary">Gửi yêu cầu rút tiền</button>
+            </div>
+        </form>
+    </details>
+}
+else
+{
+    <div class="alert alert-secondary mb-4 small">
+        Tính năng rút tiền về tài khoản ngân hàng hiện chỉ dành cho Chủ sân. Số dư ví của khách hàng được dùng để đặt sân và nhận tiền hoàn tự động.
+    </div>
+}
 
 <div class="card p-3 mb-4">
     <h2 class="h5">Lịch sử biến động số dư (Sổ cái bất biến)</h2>

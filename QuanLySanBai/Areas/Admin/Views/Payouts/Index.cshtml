@@ -1,4 +1,5 @@
 @model QuanLySanBai.ViewModels.AdminPayoutListVM
+@inject QuanLySanBai.Services.VietQrService VietQr
 @{
     ViewData["Title"] = "Rút tiền & Nhật ký Webhook";
 }
@@ -55,6 +56,11 @@
                                             <button class="btn btn-sm btn-outline-danger">Từ chối</button>
                                         </form>
                                     </div>
+                                    <details class="mt-1">
+                                        <summary class="small text-primary" style="cursor:pointer">Hiện mã QR chuyển khoản (<code>QSBP@(w.Id)</code>)</summary>
+                                        <img src="@VietQr.BuildPayoutQrUrl(w.TenNganHang, w.SoTaiKhoan, w.SoTien, w.Id)" alt="QR rút tiền #@w.Id" style="max-width:180px" class="border rounded p-1 bg-white mt-1" />
+                                        <div class="small text-muted">Nội dung CK: <code>QSBP@(w.Id)</code></div>
+                                    </details>
                                 }
                                 else
                                 {

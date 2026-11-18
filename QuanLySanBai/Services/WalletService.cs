@@ -85,9 +85,13 @@ public class WalletService(
             Deposits = deposits,
             Withdrawals = withdrawals,
             Refunds = refunds,
-            SePayConfigured = vietQr.IsConfigured
+            SePayConfigured = vietQr.IsConfigured,
+            CanWithdraw = await CanUserWithdrawAsync(userId)
         };
     }
+
+    public Task<bool> CanUserWithdrawAsync(long userId) =>
+        db.CoSos.AnyAsync(c => c.ChuSoHuuId == userId && c.TrangThaiDuyet == "DA_DUYET");
 
     public async Task<long> CreateDepositQr(long userId, decimal amount)
     {
@@ -262,6 +266,8 @@ public class WalletService(
 
     public async Task<long> RequestWithdrawal(long userId, WithdrawForm form)
     {
+        if (!await CanUserWithdrawAsync(userId))
+            throw new BusinessException("Tính năng rút tiền hiện chỉ dành cho Chủ sân có cơ sở đã duyệt.");
         if (form.Amount < 10000 || decimal.Round(form.Amount, 2) != form.Amount)
             throw new BusinessException("Số tiền rút tối thiểu 10.000 đ và tối đa 2 chữ số thập phân.");
         if (string.IsNullOrWhiteSpace(form.BankName) || string.IsNullOrWhiteSpace(form.AccountNumber) || string.IsNullOrWhiteSpace(form.AccountHolder))
