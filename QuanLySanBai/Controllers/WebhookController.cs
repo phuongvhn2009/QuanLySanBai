@@ -11,6 +11,19 @@ namespace QuanLySanBai.Controllers;
 [IgnoreAntiforgeryToken]
 public class WebhookController(WebhookService webhookService) : ControllerBase
 {
+    [HttpGet("sepay")]
+    public IActionResult Ping()
+    {
+        return Ok(new
+        {
+            service = "QuanLySanBai SePay Webhook Listener",
+            status = "Online",
+            domain = "quanlysanbai-nhatphuong.xyz",
+            method = "POST",
+            message = "Webhook endpoint is active and listening for incoming SePay bank transactions."
+        });
+    }
+
     [HttpPost("sepay")]
     public async Task<IActionResult> SePay()
     {
