@@ -559,6 +559,13 @@ public static class FinanceChecks
             w = await db.ViNguoiDungs.AsNoTracking().SingleAsync(x => x.NguoiDungId == f2Owner);
             Check(w.SoDuDongBang == 0m && await scalar($"SELECT COUNT(*) FROM Yeu_Cau_Rut_Tien WHERE id={wdApproveId} AND trang_thai='THANH_CONG'") == 1,
                 "F05: Approved withdrawal deducts frozen funds once");
+
+            var wdAutoId = await ws.RequestWithdrawal(f2Owner, new WithdrawForm { Amount = 10000m, BankName = "MBBank", AccountNumber = "0123456789", AccountHolder = "F2 OWNER" });
+            var outRes1 = await MakeWebhookSvc(db).ProcessSePayWebhook(MakeWebhookJson(100096, 10000m, "", transferType: "out", content: $"CT QSBP{wdAutoId} FT999"), "Apikey SEPAY_TEST_API_KEY_999");
+            var outRes2 = await MakeWebhookSvc(db).ProcessSePayWebhook(MakeWebhookJson(100096, 10000m, "", transferType: "out", content: $"CT QSBP{wdAutoId} FT999"), "Apikey SEPAY_TEST_API_KEY_999");
+            Check(outRes1.ProcessingStatus == "HOP_LE_DA_XU_LY" && outRes2.ProcessingStatus == "TRUNG_LAP" &&
+                  await scalar($"SELECT COUNT(*) FROM Yeu_Cau_Rut_Tien WHERE id={wdAutoId} AND trang_thai='THANH_CONG' AND giao_dich_cong_id IS NOT NULL") == 1,
+                "F05: Outgoing SePay webhook with QSBP code auto-approves withdrawal once");
         }
 
         // F04/F03 Security: Bypass PayExtraByWallet=false rejected & reschedule-cheaper + cancel net-paid prevents double refund

@@ -51,36 +51,19 @@ public class WebhookService(
 
         var extractedCode = sePay.ExtractPaymentCode(payload);
 
-        if (!string.Equals(payload.TransferType, "in", StringComparison.OrdinalIgnoreCase))
-        {
-            if (string.Equals(payload.TransferType, "out", StringComparison.OrdinalIgnoreCase) &&
-                sePay.AccountMatches(payload.AccountNumber, payload.SubAccount))
-            {
-                var payoutResult = await TryConfirmOutgoingPayoutAsync(payload, rawBody, now);
-                if (payoutResult is not null)
-                    return payoutResult;
-            }
-
-            await SaveStandaloneLogAsync("SEPAY", payload.Id, extractedCode, null, payload.TransferType, payload.AccountNumber, payload.TransferAmount, payload.Content, "BO_QUA_TIEN_RA", "Bỏ qua giao dịch không phải tiền vào.", rawBody, now);
-            return new WebhookProcessResult
-            {
-                StatusCode = 200,
-                Success = true,
-                ProcessingStatus = "BO_QUA_TIEN_RA",
-                Message = "Ignored outgoing transfer"
-            };
-        }
-
         if (!sePay.AccountMatches(payload.AccountNumber, payload.SubAccount))
         {
             await SaveStandaloneLogAsync("SEPAY", payload.Id, extractedCode, null, payload.TransferType, payload.AccountNumber, payload.TransferAmount, payload.Content, "SAI_TAI_KHOAN", "Số tài khoản nhận không khớp cấu hình.", rawBody, now);
-            return new WebhookProcessResult
-            {
-                StatusCode = 200,
-                Success = true,
-                ProcessingStatus = "SAI_TAI_KHOAN",
-                Message = "Account mismatch"
-            };
+            return OkResult("SAI_TAI_KHOAN", "Account mismatch");
+        }
+
+        if (string.Equals(payload.TransferType, "out", StringComparison.OrdinalIgnoreCase))
+            return await ProcessOutgoingWebhookAsync(payload, rawBody, now);
+
+        if (!string.Equals(payload.TransferType, "in", StringComparison.OrdinalIgnoreCase))
+        {
+            await SaveStandaloneLogAsync("SEPAY", payload.Id, extractedCode, null, payload.TransferType, payload.AccountNumber, payload.TransferAmount, payload.Content, "BO_QUA_TIEN_RA", "Bỏ qua giao dịch không phải tiền vào.", rawBody, now);
+            return OkResult("BO_QUA_TIEN_RA", "Ignored non-incoming transfer");
         }
 
         if (db.ChangeTracker.HasChanges())
@@ -519,16 +502,41 @@ public class WebhookService(
         return sql is not null && (sql.Number == 2601 || sql.Number == 2627);
     }
 
-    private async Task<WebhookProcessResult?> TryConfirmOutgoingPayoutAsync(SePayWebhookPayload payload, string rawBody, DateTime now)
+    private static WebhookProcessResult OkResult(string status, string message, long? userId = null, long? gatewayTxId = null) => new()
     {
-        var payoutId = ExtractPayoutRequestId(payload);
-        if (!payoutId.HasValue)
-            return null;
+        StatusCode = 200,
+        Success = true,
+        ProcessingStatus = status,
+        Message = message,
+        UserId = userId,
+        GatewayTxId = gatewayTxId
+    };
 
+    private async Task<WebhookProcessResult> ProcessOutgoingWebhookAsync(SePayWebhookPayload payload, string rawBody, DateTime now)
+    {
         if (db.ChangeTracker.HasChanges())
             db.ChangeTracker.Clear();
 
+        var sepayIdStr = payload.Id.ToString();
+        var existingGw = await db.GiaoDichCongThanhToans.AsNoTracking()
+            .SingleOrDefaultAsync(g => g.SepayTransactionId == payload.Id || (g.CongThanhToan == "SEPAY" && g.MaGiaoDichNganHang == sepayIdStr));
+        if (existingGw is not null)
+        {
+            await SaveStandaloneLogAsync("SEPAY", payload.Id, existingGw.MaDonHangCong, existingGw.Id, payload.TransferType, payload.AccountNumber, payload.TransferAmount, payload.Content, "TRUNG_LAP", "Giao dịch SePay tiền ra đã được xử lý trước đó.", rawBody, now);
+            return OkResult("TRUNG_LAP", "Duplicate outgoing transaction ignored", gatewayTxId: existingGw.Id);
+        }
+
+        var payoutId = ExtractPayoutRequestId(payload);
+        if (!payoutId.HasValue)
+        {
+            await SaveStandaloneLogAsync("SEPAY", payload.Id, null, null, payload.TransferType, payload.AccountNumber, payload.TransferAmount, payload.Content, "BO_QUA_TIEN_RA", "Giao dịch tiền ra không có mã chi trả rút tiền (QSBP).", rawBody, now);
+            return OkResult("BO_QUA_TIEN_RA", "Ignored outgoing transfer");
+        }
+
+        var code = $"QSBP{payoutId.Value}";
         long? notifyUserId = null;
+        long gatewayTxId = 0;
+
         try
         {
             await using var tx = await db.Database.BeginTransactionAsync();
@@ -536,18 +544,26 @@ public class WebhookService(
                 .FromSqlInterpolated($"SELECT * FROM dbo.Yeu_Cau_Rut_Tien WITH (UPDLOCK, HOLDLOCK) WHERE id = {payoutId.Value}")
                 .SingleOrDefaultAsync();
 
-            if (request is null || request.TrangThai != "CHO_DUYET" || payload.TransferAmount < request.SoTien)
+            async Task<WebhookProcessResult> LogAndCommit(string status, string note, string msg)
             {
-                await tx.RollbackAsync();
-                return null;
+                db.NhatKyWebhooks.Add(BuildLog(payload, code, null, status, note, rawBody, now));
+                await db.SaveChangesAsync();
+                await tx.CommitAsync();
+                return OkResult(status, msg);
             }
+
+            if (request is null)
+                return await LogAndCommit("KHONG_TIM_THAY_MA", $"Không tìm thấy yêu cầu rút tiền #{payoutId.Value}.", "Payout request not found");
+            if (request.TrangThai == "THANH_CONG")
+                return await LogAndCommit("TRUNG_LAP", $"Yêu cầu rút tiền #{request.Id} đã được duyệt trước đó.", "Payout already confirmed");
+            if (request.TrangThai != "CHO_DUYET")
+                return await LogAndCommit("LOI_XU_LY", $"Yêu cầu rút tiền #{request.Id} đang ở trạng thái {request.TrangThai}, không thể tự động duyệt.", "Invalid payout status");
+            if (payload.TransferAmount < request.SoTien)
+                return await LogAndCommit("THIEU_TIEN", $"Chuyển khoản chi trả #{request.Id} thiếu tiền: chuyển {payload.TransferAmount:N0}, yêu cầu {request.SoTien:N0}.", "Insufficient payout transfer");
 
             var lockedWallet = await walletService.LockWalletByIdAsync(request.ViId);
             if (lockedWallet.SoDuDongBang < request.SoTien)
-            {
-                await tx.RollbackAsync();
-                return null;
-            }
+                return await LogAndCommit("LOI_XU_LY", $"Số dư đóng băng của ví không đủ cho yêu cầu rút #{request.Id}.", "Insufficient frozen balance");
 
             var endEntry = WalletService.CreateLedgerEntry(
                 lockedWallet,
@@ -557,34 +573,48 @@ public class WebhookService(
                 $"Chuyển khoản rút tiền #{request.Id} (SePay #{payload.Id})",
                 now);
             db.GiaoDichVis.Add(endEntry);
+
+            var gw = new GiaoDichCongThanhToan
+            {
+                MaDonHangCong = code,
+                MaGiaoDichNganHang = sepayIdStr,
+                SepayTransactionId = payload.Id,
+                NguoiDungId = lockedWallet.NguoiDungId,
+                CongThanhToan = "SEPAY",
+                SoTien = request.SoTien,
+                LoaiThanhToan = "CHUYEN_TIEN",
+                DuLieuWebhook = TruncateRawBody(rawBody),
+                TrangThai = "THANH_CONG",
+                NgayTao = now,
+                NgayThanhToan = now,
+                MaSuKienCong = payload.ReferenceCode,
+                NgayCapNhat = now
+            };
+            db.GiaoDichCongThanhToans.Add(gw);
             await db.SaveChangesAsync();
 
-            request.NgayXuLy = now;
+            request.GiaoDichCongId = gw.Id;
             request.GiaoDichKetThucId = endEntry.Id;
+            request.NgayXuLy = now;
             request.TrangThai = "THANH_CONG";
-            db.NhatKyWebhooks.Add(BuildLog(payload, $"QSBP{request.Id}", null, "HOP_LE_DA_XU_LY", "Tự động duyệt rút tiền qua webhook tiền ra.", rawBody, now));
+            db.NhatKyWebhooks.Add(BuildLog(payload, code, gw.Id, "HOP_LE_DA_XU_LY", "Tự động duyệt rút tiền qua webhook tiền ra.", rawBody, now));
             await db.SaveChangesAsync();
             await tx.CommitAsync();
 
             notifyUserId = lockedWallet.NguoiDungId;
+            gatewayTxId = gw.Id;
         }
         catch (Exception ex) when (ex is DbUpdateException or SqlException && IsUniqueViolation(ex))
         {
             db.ChangeTracker.Clear();
-            return null;
+            await SaveStandaloneLogAsync("SEPAY", payload.Id, code, null, payload.TransferType, payload.AccountNumber, payload.TransferAmount, payload.Content, "TRUNG_LAP", "Chặn xử lý trùng giao dịch tiền ra bởi ràng buộc SQL.", rawBody, now);
+            return OkResult("TRUNG_LAP", "Duplicate outgoing prevented by SQL");
         }
 
         if (updates is not null && notifyUserId.HasValue)
             await updates.PaymentChanged(null, notifyUserId);
 
-        return new WebhookProcessResult
-        {
-            StatusCode = 200,
-            Success = true,
-            ProcessingStatus = "HOP_LE_DA_XU_LY",
-            Message = "Outgoing payout confirmed",
-            UserId = notifyUserId
-        };
+        return OkResult("HOP_LE_DA_XU_LY", "Outgoing payout confirmed", notifyUserId, gatewayTxId);
     }
 
     private static readonly Regex PayoutRegex = new(@"QSBP(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);

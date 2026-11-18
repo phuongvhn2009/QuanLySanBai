@@ -64,7 +64,14 @@
                                 }
                                 else
                                 {
-                                    <span class="small text-muted">@w.NgayXuLy?.ToString("dd/MM/yyyy HH:mm") @w.LyDoTuChoi</span>
+                                    <span class="small text-muted">
+                                        @w.NgayXuLy?.ToString("dd/MM/yyyy HH:mm")
+                                        @if (w.TrangThai == "THANH_CONG")
+                                        {
+                                            <span class="badge @(w.GiaoDichCongId.HasValue ? "bg-info text-dark" : "bg-light text-dark border") ms-1">@(w.GiaoDichCongId.HasValue ? "SePay Tự động" : "Duyệt tay")</span>
+                                        }
+                                        @w.LyDoTuChoi
+                                    </span>
                                 }
                             </td>
                         </tr>
@@ -114,3 +121,22 @@
         </div>
     }
 </div>
+
+@{
+    var pendingCount = Model.Withdrawals.Count(w => w.TrangThai == "CHO_DUYET");
+}
+@section Scripts {
+    @if (pendingCount > 0)
+    {
+        <script>
+            setInterval(async () => {
+                if (document.activeElement?.matches('input,textarea,select')) return;
+                try {
+                    const html = await (await fetch(location.href, { cache: 'no-store' })).text();
+                    const count = html.match(/name="RequestId"/g)?.length ?? 0;
+                    if (count !== @(pendingCount * 2)) location.reload();
+                } catch { }
+            }, 6000);
+        </script>
+    }
+}
