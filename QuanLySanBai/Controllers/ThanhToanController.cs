@@ -8,8 +8,7 @@ namespace QuanLySanBai.Controllers;
 [Authorize]
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 public class ThanhToanController(
-    PaymentService paymentService,
-    WalletService walletService) : Controller
+    PaymentService paymentService) : Controller
 {
     private long Actor => AccessService.UserId(User);
 
@@ -56,9 +55,15 @@ public class ThanhToanController(
         if (!ModelState.IsValid || form.OrderId <= 0)
             throw new BusinessException("Thông tin thanh toán ví không hợp lệ.");
 
-        var paymentId = await walletService.PayBookingWithWallet(Actor, form);
-        TempData["SuccessMessage"] = "Thanh toán bằng ví thành công.";
-        return RedirectToAction(nameof(HoaDon), new { id = paymentId });
+        var result = await paymentService.PayWithWalletOrQrAsync(Actor, form);
+        if (result.PaymentId.HasValue)
+        {
+            TempData["SuccessMessage"] = "Thanh toán bằng ví thành công.";
+            return RedirectToAction(nameof(HoaDon), new { id = result.PaymentId.Value });
+        }
+
+        TempData["InfoMessage"] = result.InfoMessage;
+        return RedirectToAction(nameof(Qr), new { id = result.GatewayTxId!.Value });
     }
 
     [HttpPost]

@@ -204,7 +204,7 @@ public class WalletService(
         if (lockedWallet.TrangThai != "HOAT_DONG")
             throw new BusinessException("Ví đang bị khóa.");
         if (lockedWallet.SoDuKhaDung < amountToPay)
-            throw new BusinessException($"Số dư ví khả dụng ({lockedWallet.SoDuKhaDung:N0} đ) không đủ để thanh toán {amountToPay:N0} đ.");
+            throw new InsufficientWalletBalanceException(lockedWallet.SoDuKhaDung, amountToPay);
 
         var ledgerEntry = CreateLedgerEntry(
             lockedWallet,

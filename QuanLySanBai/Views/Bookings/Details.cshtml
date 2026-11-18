@@ -13,7 +13,7 @@
     <a asp-action="Index" class="btn btn-outline-secondary">← Đơn của tôi</a>
     @if (canPay)
     {
-        <a asp-controller="ThanhToan" asp-action="Index" asp-route-id="@Model.Id" class="btn btn-primary">Thanh toán ngay (VietQR / Ví)</a>
+        <a asp-controller="ThanhToan" asp-action="Index" asp-route-id="@Model.Id" class="btn btn-primary">Thanh toán ngay (VietQR / Ví / Quầy)</a>
     }
     @if (canReschedule)
     {

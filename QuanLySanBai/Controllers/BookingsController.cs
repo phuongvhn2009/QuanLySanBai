@@ -49,7 +49,7 @@ public class BookingsController(QuanLySanBaiContext db, BookingService service) 
     }
 
     [HttpPost]
-    public async Task<IActionResult> Create(BookingForm form)
+    public async Task<IActionResult> Create(BookingForm form, [FromServices] PaymentService paymentService)
     {
         if (!ModelState.IsValid)
         {
@@ -58,11 +58,11 @@ public class BookingsController(QuanLySanBaiContext db, BookingService service) 
                 ? RedirectToAction("Details", "Courts", new { id = form.CourtId, date = form.Date != default ? form.Date.ToString("yyyy-MM-dd") : null })
                 : RedirectToAction("Index", "Courts");
         }
+        long id;
+        var userId = AccessService.UserId(User);
         try
         {
-            var id = await service.Book(AccessService.UserId(User), form, HttpContext.RequestAborted);
-            TempData["SuccessMessage"] = "Đặt sân thành công! Bạn có thời gian giữ chỗ để hoàn tất các bước tiếp theo.";
-            return RedirectToAction(nameof(Details), new { id });
+            id = await service.Book(userId, form, HttpContext.RequestAborted);
         }
         catch (BusinessException ex)
         {
@@ -81,6 +81,43 @@ public class BookingsController(QuanLySanBaiContext db, BookingService service) 
             TempData["ErrorMessage"] = msg;
             return RedirectToAction("Details", "Courts", new { id = form.CourtId, date = form.Date.ToString("yyyy-MM-dd") });
         }
+
+        try
+        {
+            if (form.PaymentChoice is "QR_COC" or "QR_FULL")
+            {
+                var gwId = await paymentService.CreateBookingQr(userId, id, form.PaymentChoice == "QR_COC" ? "COC" : "THANH_TOAN");
+                TempData["SuccessMessage"] = "Đã giữ chỗ thành công! Quét mã VietQR bên dưới để hoàn tất thanh toán.";
+                return RedirectToAction("Qr", "ThanhToan", new { id = gwId });
+            }
+
+            if (form.PaymentChoice is "VI_COC" or "VI_FULL")
+            {
+                var payResult = await paymentService.PayWithWalletOrQrAsync(userId, new PayWalletForm
+                {
+                    OrderId = id,
+                    Purpose = form.PaymentChoice == "VI_COC" ? "COC" : "THANH_TOAN",
+                    Key = Guid.NewGuid().ToString("N")
+                });
+                if (payResult.PaymentId.HasValue)
+                {
+                    TempData["SuccessMessage"] = "Đặt sân và thanh toán bằng Ví thành công!";
+                    return RedirectToAction("HoaDon", "ThanhToan", new { id = payResult.PaymentId.Value });
+                }
+                TempData["InfoMessage"] = payResult.InfoMessage;
+                return RedirectToAction("Qr", "ThanhToan", new { id = payResult.GatewayTxId!.Value });
+            }
+        }
+        catch (BusinessException ex)
+        {
+            TempData["ErrorMessage"] = $"Đã giữ chỗ đơn thành công nhưng chưa tạo được thanh toán: {ex.Message}";
+            return RedirectToAction(nameof(Details), new { id });
+        }
+
+        TempData["SuccessMessage"] = form.PaymentChoice == "TAI_QUAY"
+            ? "Đặt giữ chỗ thành công! Vui lòng thanh toán tiền mặt hoặc chuyển khoản tại quầy trước hạn giữ chỗ."
+            : "Đặt sân thành công! Bạn có thời gian giữ chỗ để hoàn tất các bước tiếp theo.";
+        return RedirectToAction(nameof(Details), new { id });
     }
 
     public async Task<IActionResult> Index() => View(await db.DonDatSans.AsNoTracking().Include(d => d.ChiTietDatSans).ThenInclude(c => c.San).Where(d => d.NguoiDungId == AccessService.UserId(User)).OrderByDescending(d => d.Id).Take(100).ToListAsync());

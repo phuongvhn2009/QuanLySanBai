@@ -82,7 +82,7 @@ else
                 <div class="card p-4 h-100">
                     <h2 class="h5">2. Thanh toán bằng Ví điện tử</h2>
                     <p class="mb-2">Số dư ví khả dụng: <strong class="text-success">@Model.SoDuViKhaDung.ToString("N0") đ</strong></p>
-                    <p class="text-muted small">Trừ trực tiếp từ số dư ví của bạn và xác nhận đơn ngay lập tức.</p>
+                    <p class="text-muted small">Trừ trực tiếp từ số dư ví. Nếu số dư ví không đủ, hệ thống sẽ tự động chuyển sang tạo mã chuyển khoản VietQR theo đơn này.</p>
                     <form asp-action="ThanhToanVi" method="post" class="mt-auto" data-confirm="Xác nhận trừ tiền từ ví để thanh toán đơn này?">
                         <input type="hidden" name="OrderId" value="@Model.OrderId" />
                         <input type="hidden" name="Version" value="@Model.Version" />
@@ -104,7 +104,7 @@ else
             </div>
         }
 
-        <!-- Thanh toán tiền mặt tại quầy (chỉ nhân viên có quyền THU_TIEN) -->
+        <!-- Thanh toán tiền mặt tại quầy (chỉ nhân viên có quyền THU_TIEN) hoặc hướng dẫn cho khách hàng -->
         @if (Model.CanCollectCash)
         {
             <div class="col-12">
@@ -143,6 +143,21 @@ else
                             <button type="submit" class="btn btn-primary" id="cashSubmitBtn">Xác nhận thu tiền mặt &amp; In hóa đơn</button>
                         </div>
                     </form>
+                </div>
+            </div>
+        }
+        else if (Model.TrangThaiDon == "CHO_THANH_TOAN")
+        {
+            <div class="col-12">
+                <div class="card p-4 bg-light">
+                    <h2 class="h5">3. Trả tiền mặt hoặc chuyển khoản trực tiếp tại quầy</h2>
+                    <p class="text-muted small mb-2">
+                        Đơn của bạn đang được giữ chỗ đến <strong>@Model.ThoiGianHetHanGiuCho?.ToString("HH:mm dd/MM/yyyy")</strong>.
+                        Bạn có thể đến quầy của <strong>@Model.TenCoSo</strong> để thanh toán bằng tiền mặt hoặc chuyển khoản cho nhân viên xác nhận trước giờ hết hạn giữ chỗ.
+                    </p>
+                    <div>
+                        <a asp-controller="Bookings" asp-action="Details" asp-route-id="@Model.OrderId" class="btn btn-outline-primary btn-sm">Giữ đơn &amp; Xem chi tiết đơn</a>
+                    </div>
                 </div>
             </div>
         }

@@ -8,6 +8,12 @@ using QuanLySanBai.Models.Entities;
 namespace QuanLySanBai.Services;
 
 public class BusinessException(string message) : Exception(message);
+public class InsufficientWalletBalanceException(decimal available, decimal required)
+    : BusinessException($"Số dư ví khả dụng ({available:N0} đ) không đủ để thanh toán {required:N0} đ.")
+{
+    public decimal Available { get; } = available;
+    public decimal Required { get; } = required;
+}
 public class FacilityAccessException : Exception;
 
 public static class VietnamTime

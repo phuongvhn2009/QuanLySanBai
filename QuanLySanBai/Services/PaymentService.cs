@@ -139,6 +139,21 @@ public class PaymentService(
         return gatewayTx.Id;
     }
 
+    public async Task<(long? PaymentId, long? GatewayTxId, string? InfoMessage)> PayWithWalletOrQrAsync(long userId, PayWalletForm form)
+    {
+        try
+        {
+            var paymentId = await walletService.PayBookingWithWallet(userId, form);
+            return (paymentId, null, null);
+        }
+        catch (InsufficientWalletBalanceException ex)
+        {
+            db.ChangeTracker.Clear();
+            var gatewayTxId = await CreateBookingQr(userId, form.OrderId, form.Purpose);
+            return (null, gatewayTxId, $"{ex.Message} Hệ thống đã tự động chuyển sang tạo mã chuyển khoản VietQR cho đơn này.");
+        }
+    }
+
     public async Task<ThanhToanQrVM> GetQrDetails(long actorUserId, long gatewayTxId)
     {
         var gw = await db.GiaoDichCongThanhToans.AsNoTracking()

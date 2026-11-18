@@ -28,6 +28,15 @@ public class CourtsController(QuanLySanBaiContext db, BookingService service) : 
     {
         if(!ModelState.IsValid) return BadRequest();
         var calendar=await service.Calendar(id,date ?? VietnamTime.Today);
-        return calendar is null ? NotFound() : View(calendar);
+        if (calendar is null) return NotFound();
+        if (User.Identity?.IsAuthenticated == true)
+        {
+            var uid = AccessService.UserId(User);
+            ViewBag.WalletBalance = await db.ViNguoiDungs.AsNoTracking()
+                .Where(w => w.NguoiDungId == uid)
+                .Select(w => (decimal?)w.SoDuKhaDung)
+                .SingleOrDefaultAsync() ?? 0m;
+        }
+        return View(calendar);
     }
 }
