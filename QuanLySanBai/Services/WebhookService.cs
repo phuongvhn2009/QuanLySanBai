@@ -253,9 +253,7 @@ public class WebhookService(
                 return new WebhookProcessResult { StatusCode = 200, Success = true, ProcessingStatus = "DON_DA_HUY", Message = "Order already cancelled", OrderId = order.Id, GatewayTxId = gatewayTx.Id };
             }
 
-            var paid = await db.ThanhToanDons
-                .Where(p => p.DonDatSanId == order.Id && p.TrangThai == "THANH_CONG")
-                .SumAsync(p => (decimal?)p.SoTien) ?? 0m;
+            var paid = await OrderFinance.NetPaidAsync(db, order.Id);
 
             var isExpiredOrder = order.TrangThai == "HET_HAN" ||
                 (order.TrangThai == "CHO_THANH_TOAN" && order.ThoiGianHetHanGiuCho.HasValue && order.ThoiGianHetHanGiuCho.Value <= now);
@@ -469,7 +467,7 @@ public class WebhookService(
         NoiDung = payload?.Content,
         TrangThaiXuLy = status,
         GhiChu = note.Length > 500 ? note[..500] : note,
-        DuLieuGoc = rawBody,
+        DuLieuGoc = TruncateRawBody(rawBody),
         NgayTao = now
     };
 
@@ -492,7 +490,7 @@ public class WebhookService(
                 NoiDung = content,
                 TrangThaiXuLy = status,
                 GhiChu = note.Length > 500 ? note[..500] : note,
-                DuLieuGoc = rawBody,
+                DuLieuGoc = TruncateRawBody(rawBody),
                 NgayTao = now
             });
             await db.SaveChangesAsync();
@@ -502,6 +500,9 @@ public class WebhookService(
             // Logging webhook failures must never mask primary response
         }
     }
+
+    private static string TruncateRawBody(string rawBody) =>
+        rawBody.Length > 4000 ? rawBody[..4000] : rawBody;
 
     private static bool IsUniqueViolation(Exception ex)
     {

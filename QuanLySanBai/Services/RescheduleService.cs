@@ -20,7 +20,7 @@ public class RescheduleService(
             .Include(d => d.CoSo)
             .Include(d => d.ChiTietDatSans).ThenInclude(c => c.San)
             .Include(d => d.ChiTietDatSans).ThenInclude(c => c.ChinhSachHuyDoi).ThenInclude(p => p.MucPhiHuyDois)
-            .Include(d => d.ThanhToanDons)
+            .Include(d => d.ThanhToanDons).ThenInclude(p => p.HoanTiens)
             .SingleOrDefaultAsync(d => d.Id == orderId)
             ?? throw new BusinessException("Không tìm thấy đơn đặt sân.");
 
@@ -36,7 +36,7 @@ public class RescheduleService(
         var selectedDate = targetDate ?? currentSlot.NgaySuDung;
         if (selectedDate < today) selectedDate = today;
 
-        var paid = order.ThanhToanDons.Where(p => p.TrangThai == "THANH_CONG").Sum(p => p.SoTien);
+        var paid = OrderFinance.ComputeNetPaid(order.ThanhToanDons);
         var hoursBeforeStart = Math.Max(0m, decimal.Round((decimal)(VietnamTime.Start(currentSlot.NgaySuDung, currentSlot.GioBatDau) - now).TotalHours, 2));
 
         var allowChange = order.TrangThai is ("CHO_THANH_TOAN" or "DA_XAC_NHAN")
@@ -51,10 +51,7 @@ public class RescheduleService(
         else if (VietnamTime.Start(currentSlot.NgaySuDung, currentSlot.GioBatDau) <= now)
             disallowReason = "Đã đến giờ sử dụng, không thể đổi lịch.";
 
-        var tier = currentSlot.ChinhSachHuyDoi.MucPhiHuyDois
-            .OrderBy(m => m.SoGioTuTruocTran)
-            .FirstOrDefault(m => hoursBeforeStart >= m.SoGioTuTruocTran && (m.SoGioDenTruocTran is null || hoursBeforeStart < m.SoGioDenTruocTran))
-            ?? currentSlot.ChinhSachHuyDoi.MucPhiHuyDois.OrderBy(m => m.SoGioTuTruocTran).FirstOrDefault();
+        var tier = OrderFinance.MatchFeeTier(currentSlot.ChinhSachHuyDoi, hoursBeforeStart);
 
         var feePercent = tier?.TiLePhiDoi ?? 0m;
         var feeAmount = decimal.Round(currentSlot.GiaThue * feePercent / 100m, 2);
@@ -166,10 +163,11 @@ public class RescheduleService(
         var order = await db.DonDatSans
             .Include(d => d.CoSo)
             .Include(d => d.ChiTietDatSans).ThenInclude(c => c.ChinhSachHuyDoi).ThenInclude(p => p.MucPhiHuyDois)
-            .Include(d => d.ThanhToanDons)
+            .Include(d => d.ThanhToanDons).ThenInclude(p => p.HoanTiens)
             .SingleOrDefaultAsync(d => d.Id == form.OrderId)
             ?? throw new BusinessException("Không tìm thấy đơn đặt sân.");
 
+        var now = await ServerNowAsync();
         var isOwner = order.NguoiDungId == actorUserId;
         if (!isOwner)
         {
@@ -177,9 +175,14 @@ public class RescheduleService(
                 !await access.HasPermission(actorUserId, order.CoSoId, "DOI_HUY_DON"))
                 throw new FacilityAccessException();
         }
-        else if (!await db.NguoiDungs.AsNoTracking().AnyAsync(u => u.Id == actorUserId && u.TrangThai))
+        else
         {
-            throw new FacilityAccessException();
+            var actorUser = await db.NguoiDungs.AsNoTracking().SingleOrDefaultAsync(u => u.Id == actorUserId && u.TrangThai)
+                ?? throw new FacilityAccessException();
+            if (actorUser.BiKhoaDatSan ||
+                (actorUser.KhoaDatSanDen.HasValue && actorUser.KhoaDatSanDen > now) ||
+                (actorUser.KhoaDoiLichDen.HasValue && actorUser.KhoaDoiLichDen > now))
+                throw new BusinessException("Tài khoản hiện đang bị tạm khóa quyền đặt sân hoặc đổi lịch.");
         }
 
         if (!string.IsNullOrEmpty(form.Version) && Convert.ToBase64String(order.RowVersion) != form.Version)
@@ -194,7 +197,6 @@ public class RescheduleService(
         if (!oldSlot.ChinhSachHuyDoi.ChoPhepDoiLich)
             throw new BusinessException("Chính sách của đơn không cho phép đổi lịch.");
 
-        var now = await ServerNowAsync();
         if (VietnamTime.Start(oldSlot.NgaySuDung, oldSlot.GioBatDau) <= now)
             throw new BusinessException("Đã đến giờ sử dụng, không thể đổi lịch.");
 
@@ -248,17 +250,14 @@ public class RescheduleService(
         var policyIdForNewSlot = activePolicy?.Id ?? oldSlot.ChinhSachHuyDoiId;
 
         var hoursBeforeOld = Math.Max(0m, decimal.Round((decimal)(VietnamTime.Start(oldSlot.NgaySuDung, oldSlot.GioBatDau) - now).TotalHours, 2));
-        var tier = oldSlot.ChinhSachHuyDoi.MucPhiHuyDois
-            .OrderBy(m => m.SoGioTuTruocTran)
-            .FirstOrDefault(m => hoursBeforeOld >= m.SoGioTuTruocTran && (m.SoGioDenTruocTran is null || hoursBeforeOld < m.SoGioDenTruocTran))
-            ?? oldSlot.ChinhSachHuyDoi.MucPhiHuyDois.OrderBy(m => m.SoGioTuTruocTran).FirstOrDefault();
+        var tier = OrderFinance.MatchFeeTier(oldSlot.ChinhSachHuyDoi, hoursBeforeOld);
 
         var feePercent = tier?.TiLePhiDoi ?? 0m;
         var changeFee = decimal.Round(oldSlot.GiaThue * feePercent / 100m, 2);
         var priceDiff = newPrice.GiaThue - oldSlot.GiaThue;
 
         var successPayments = order.ThanhToanDons.Where(p => p.TrangThai == "THANH_CONG").OrderBy(p => p.Id).ToList();
-        var paid = successPayments.Sum(p => p.SoTien);
+        var paid = OrderFinance.ComputeNetPaid(order.ThanhToanDons);
 
         oldCourtId = oldSlot.SanId;
         var oldSlotStatus = oldSlot.TrangThaiSlot;
@@ -317,7 +316,7 @@ public class RescheduleService(
 
         // Handle financial difference
         var delta = newTotalDue - paid;
-        if (delta > 0 && form.PayExtraByWallet && order.NguoiDungId.HasValue && isOwner)
+        if (delta > 0)
         {
             // Only collect extra automatically via wallet if already confirmed or deposit increased
             decimal neededNow = order.TrangThai == "DA_XAC_NHAN"
@@ -325,7 +324,10 @@ public class RescheduleService(
                 : Math.Max(0m, order.TienCocYeuCau - paid);
             neededNow = Math.Min(delta, neededNow);
 
-            if (neededNow > 0)
+            if (isOwner && neededNow > 0 && (!form.PayExtraByWallet || !order.NguoiDungId.HasValue))
+                throw new BusinessException($"Đổi sang khung giờ này cần thanh toán bổ sung {neededNow:N0} đ qua ví.");
+
+            if (neededNow > 0 && form.PayExtraByWallet && order.NguoiDungId.HasValue && isOwner)
             {
                 var lockedWallet = await walletService.LockOrCreateWalletAsync(order.NguoiDungId.Value, now);
                 if (lockedWallet.SoDuKhaDung < neededNow)
@@ -369,7 +371,11 @@ public class RescheduleService(
             foreach (var p in successPayments)
             {
                 if (remainingToRefund <= 0) break;
-                var portion = Math.Min(remainingToRefund, p.SoTien);
+                var refundedOnPayment = p.HoanTiens
+                    .Where(h => h.TrangThai != "DA_HUY" && h.TrangThai != "THAT_BAI")
+                    .Sum(h => h.SoTien);
+                var maxForPayment = Math.Max(0m, p.SoTien - refundedOnPayment);
+                var portion = Math.Min(remainingToRefund, maxForPayment);
                 if (portion <= 0) continue;
 
                 var key = $"REFUND_RESCHED:{order.Id}:{p.Id}:{rescheduleReq.Id}";

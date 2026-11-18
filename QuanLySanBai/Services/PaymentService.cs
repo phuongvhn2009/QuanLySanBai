@@ -34,9 +34,7 @@ public class PaymentService(
         if (!canView)
             throw new FacilityAccessException();
 
-        var paid = await db.ThanhToanDons.AsNoTracking()
-            .Where(p => p.DonDatSanId == orderId && p.TrangThai == "THANH_CONG")
-            .SumAsync(p => (decimal?)p.SoTien) ?? 0m;
+        var paid = await OrderFinance.NetPaidAsync(db, orderId);
 
         decimal walletBalance = 0m;
         if (isOwner)
@@ -98,9 +96,7 @@ public class PaymentService(
         if (order.TrangThai == "CHO_THANH_TOAN" && (order.ThoiGianHetHanGiuCho is null || order.ThoiGianHetHanGiuCho <= now))
             throw new BusinessException("Đơn đã hết hạn giữ chỗ.");
 
-        var paid = await db.ThanhToanDons.AsNoTracking()
-            .Where(p => p.DonDatSanId == orderId && p.TrangThai == "THANH_CONG")
-            .SumAsync(p => (decimal?)p.SoTien) ?? 0m;
+        var paid = await OrderFinance.NetPaidAsync(db, orderId);
         var totalDue = order.TongTienPhaiTra ?? 0m;
         var remaining = totalDue - paid;
         if (remaining <= 0)
@@ -242,9 +238,7 @@ public class PaymentService(
         if (order.TrangThai is not ("CHO_THANH_TOAN" or "DA_XAC_NHAN" or "DANG_SU_DUNG"))
             throw new BusinessException("Không thể thu tiền ở trạng thái hiện tại.");
 
-        var paid = await db.ThanhToanDons
-            .Where(p => p.DonDatSanId == order.Id && p.TrangThai == "THANH_CONG")
-            .SumAsync(p => (decimal?)p.SoTien) ?? 0m;
+        var paid = await OrderFinance.NetPaidAsync(db, order.Id);
         var totalDue = order.TongTienPhaiTra ?? 0m;
         if (paid + form.Amount > totalDue)
             throw new BusinessException("Khoản thu vượt quá số tiền còn phải trả.");
@@ -262,6 +256,7 @@ public class PaymentService(
                 throw new BusinessException("Lần thu đầu phải đạt mức cọc yêu cầu để xác nhận đơn.");
 
             order.TrangThai = "DA_XAC_NHAN";
+            order.ThoiGianHetHanGiuCho = null;
             order.NgayCapNhat = now;
             foreach (var c in activeSlots)
             {
@@ -325,9 +320,7 @@ public class PaymentService(
         if (!authorized)
             throw new FacilityAccessException();
 
-        var totalPaid = await db.ThanhToanDons.AsNoTracking()
-            .Where(p => p.DonDatSanId == order.Id && p.TrangThai == "THANH_CONG")
-            .SumAsync(p => (decimal?)p.SoTien) ?? 0m;
+        var totalPaid = await OrderFinance.NetPaidAsync(db, order.Id);
 
         var slot = order.ChiTietDatSans.FirstOrDefault(c => c.TrangThaiSlot is not ("DA_DOI" or "DA_HUY"))
             ?? order.ChiTietDatSans.FirstOrDefault();

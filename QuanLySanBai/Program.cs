@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -7,7 +8,6 @@ using QuanLySanBai.Models.Entities;
 using QuanLySanBai.Services;
 
 var builder = WebApplication.CreateBuilder(args.Where(a=>a!="--seed-demo").ToArray());
-builder.Configuration.AddUserSecrets<Program>(optional: true);
 builder.Services.AddSignalR();
 builder.Services.AddScoped<RealtimeUpdates>();
 
@@ -74,14 +74,28 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+// shortcut: in-memory per-IP rate limit resets on restart; move to distributed limiter when running multiple instances
+var rateBuckets = new ConcurrentDictionary<string, (long Window, int Count)>();
 app.Use(async (context, next) =>
 {
-    var path = context.Request.Path.Value;
-    if (!string.IsNullOrEmpty(path) && path.Contains("//", StringComparison.Ordinal))
+    context.Response.Headers.TryAdd("X-Content-Type-Options", "nosniff");
+    context.Response.Headers.TryAdd("X-Frame-Options", "SAMEORIGIN");
+    context.Response.Headers.TryAdd("Referrer-Policy", "strict-origin-when-cross-origin");
+    if (context.Request.Path.Value is { } p && p.Contains("//", StringComparison.Ordinal))
     {
-        while (path.Contains("//", StringComparison.Ordinal))
-            path = path.Replace("//", "/", StringComparison.Ordinal);
-        context.Request.Path = path;
+        while (p.Contains("//", StringComparison.Ordinal)) p = p.Replace("//", "/", StringComparison.Ordinal);
+        context.Request.Path = p;
+    }
+    var reqPath = context.Request.Path;
+    int limit = HttpMethods.IsPost(context.Request.Method) && context.Connection.RemoteIpAddress is not null
+        ? (reqPath.Equals("/Account/Login", StringComparison.OrdinalIgnoreCase) || reqPath.Equals("/Account/Register", StringComparison.OrdinalIgnoreCase) ? 30
+        : reqPath.Equals("/api/webhook/sepay", StringComparison.OrdinalIgnoreCase) ? 120 : 0) : 0;
+    if (limit > 0)
+    {
+        var window = DateTimeOffset.UtcNow.ToUnixTimeSeconds() / 60;
+        if (rateBuckets.Count > 4096) foreach (var kv in rateBuckets) if (kv.Value.Window < window) rateBuckets.TryRemove(kv.Key, out _);
+        var (_, count) = rateBuckets.AddOrUpdate($"{(limit == 30 ? "auth" : "wh")}:{context.Connection.RemoteIpAddress}", _ => (window, 1), (_, prev) => prev.Window == window ? (window, prev.Count + 1) : (window, 1));
+        if (count > limit) { context.Response.StatusCode = StatusCodes.Status429TooManyRequests; context.Response.Headers["Retry-After"] = "60"; await context.Response.WriteAsync("Too many requests."); return; }
     }
     await next();
 });

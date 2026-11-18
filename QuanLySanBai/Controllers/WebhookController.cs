@@ -25,8 +25,12 @@ public class WebhookController(WebhookService webhookService) : ControllerBase
     }
 
     [HttpPost("sepay")]
+    [RequestSizeLimit(65_536)]
     public async Task<IActionResult> SePay()
     {
+        if (Request.ContentLength > 65_536)
+            return StatusCode(413, new { success = false, status = "LOI_XU_LY", message = "Payload too large" });
+
         using var reader = new StreamReader(Request.Body, Encoding.UTF8);
         var rawBody = await reader.ReadToEndAsync();
         var authHeader = Request.Headers["Authorization"].FirstOrDefault();

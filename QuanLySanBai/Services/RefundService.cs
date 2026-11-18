@@ -21,7 +21,7 @@ public class RefundService(
     {
         var order = await db.DonDatSans.AsNoTracking()
             .Include(d => d.ChiTietDatSans).ThenInclude(c => c.ChinhSachHuyDoi).ThenInclude(p => p.MucPhiHuyDois)
-            .Include(d => d.ThanhToanDons)
+            .Include(d => d.ThanhToanDons).ThenInclude(p => p.HoanTiens)
             .SingleOrDefaultAsync(d => d.Id == orderId)
             ?? throw new BusinessException("Không tìm thấy đơn đặt sân.");
 
@@ -35,15 +35,15 @@ public class RefundService(
         var now = await ServerNowAsync();
         var start = VietnamTime.Start(activeSlot.NgaySuDung, activeSlot.GioBatDau);
         var hours = Math.Max(0m, decimal.Round((decimal)(start - now).TotalHours, 2));
-        var paid = order.ThanhToanDons.Where(p => p.TrangThai == "THANH_CONG").Sum(p => p.SoTien);
+        var netPaid = OrderFinance.ComputeNetPaid(order.ThanhToanDons);
 
-        var (percent, penalty, refund) = CalculateCancelAmounts(activeSlot.ChinhSachHuyDoi, hours, paid);
+        var (percent, penalty, refund) = CalculateCancelAmounts(activeSlot.ChinhSachHuyDoi, hours, netPaid);
 
         return new CancelPreviewVM
         {
             OrderId = order.Id,
             MaDatSan = order.MaDatSan,
-            TotalPaid = paid,
+            TotalPaid = netPaid,
             HoursBeforeStart = hours,
             PenaltyPercent = percent,
             PenaltyAmount = penalty,
@@ -111,9 +111,10 @@ public class RefundService(
             .SumAsync(h => (decimal?)h.SoTien) ?? 0m;
 
         var totalPaid = successPayments.Sum(p => p.SoTien);
+        var netPaid = Math.Max(0m, totalPaid - existingRefunded);
         var primarySlot = activeSlots[0];
         var hoursBeforeStart = decimal.Round((decimal)(VietnamTime.Start(primarySlot.NgaySuDung, primarySlot.GioBatDau) - now).TotalHours, 2);
-        var (penaltyPercent, penaltyAmount, refundAmount) = CalculateCancelAmounts(primarySlot.ChinhSachHuyDoi, hoursBeforeStart, totalPaid);
+        var (penaltyPercent, penaltyAmount, refundAmount) = CalculateCancelAmounts(primarySlot.ChinhSachHuyDoi, hoursBeforeStart, netPaid);
 
         if (refundAmount + existingRefunded > totalPaid)
             throw new BusinessException("Tổng tiền hoàn vượt quá số tiền đã thanh toán.");
@@ -124,7 +125,7 @@ public class RefundService(
             NguoiYeuCauId = actorUserId,
             NguoiXuLyId = actorUserId,
             SoGioTruocTran = hoursBeforeStart,
-            SoTienDaPhanBo = totalPaid,
+            SoTienDaPhanBo = netPaid,
             PhiPhatHuy = penaltyAmount,
             SoTienDuKienHoan = refundAmount,
             LyDoHuy = form.Reason.Trim(),
@@ -203,6 +204,10 @@ public class RefundService(
         // Log violation if last-minute cancellation (< 2 hours) by customer with existing payment/confirmed booking
         if (isOwner && order.NguoiDungId.HasValue && hoursBeforeStart < 2 && order.TrangThai == "DA_XAC_NHAN")
         {
+            var customerUser = await db.NguoiDungs.SingleOrDefaultAsync(u => u.Id == order.NguoiDungId.Value);
+            if (customerUser is not null)
+                customerUser.DiemUyTin = Math.Max(0, customerUser.DiemUyTin - 5);
+
             db.NhatKyViPhams.Add(new NhatKyViPham
             {
                 NguoiDungId = order.NguoiDungId.Value,
@@ -276,11 +281,7 @@ public class RefundService(
         if (totalPaid <= 0)
             return (0m, 0m, 0m);
 
-        var tier = policy.MucPhiHuyDois
-            .OrderBy(m => m.SoGioTuTruocTran)
-            .FirstOrDefault(m => hoursBeforeStart >= m.SoGioTuTruocTran &&
-                                 (m.SoGioDenTruocTran is null || hoursBeforeStart < m.SoGioDenTruocTran))
-            ?? policy.MucPhiHuyDois.OrderBy(m => m.SoGioTuTruocTran).FirstOrDefault();
+        var tier = OrderFinance.MatchFeeTier(policy, hoursBeforeStart);
 
         var percent = tier?.TiLePhiHuy ?? 0m;
         var penalty = Math.Min(totalPaid, decimal.Round(totalPaid * percent / 100m, 2));

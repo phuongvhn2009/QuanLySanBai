@@ -27,7 +27,7 @@ public class OperationService(QuanLySanBaiContext db,AccessService access,TimePr
     {
         if(Convert.ToBase64String(d.RowVersion)!=version) throw new BusinessException("Đơn đã thay đổi. Tải lại trang trước khi thao tác.");
     }
-    private async Task<decimal> Paid(long id) => await db.ThanhToanDons.Where(p=>p.DonDatSanId==id && p.TrangThai=="THANH_CONG").SumAsync(p=>(decimal?)p.SoTien) ?? 0m;
+    private Task<decimal> Paid(long id) => OrderFinance.NetPaidAsync(db, id);
     private static List<ChiTietDatSan> ActiveSlots(DonDatSan d) =>
         d.ChiTietDatSans.Where(c => c.TrangThaiSlot is not ("DA_DOI" or "DA_HUY")).ToList();
     private static void Transition(DonDatSan d,string order,string slot,DateTime now)
@@ -38,6 +38,7 @@ public class OperationService(QuanLySanBaiContext db,AccessService access,TimePr
         if(d.TrangThai!="CHO_THANH_TOAN" || active.Count!=1 || active.Any(c=>c.TrangThaiSlot!="GIU_CHO")) throw new BusinessException("Đơn không còn ở trạng thái giữ chỗ.");
         if(d.ThoiGianHetHanGiuCho is null || d.ThoiGianHetHanGiuCho<=now) throw new BusinessException("Đã hết hạn giữ chỗ; không được nhận tiền/xác nhận đơn này.");
         if(paid<d.TienCocYeuCau) throw new BusinessException("Lần thu đầu phải đạt mức cọc yêu cầu để xác nhận đơn.");
+        d.ThoiGianHetHanGiuCho=null;
         Transition(d,"DA_XAC_NHAN","DA_XAC_NHAN",now); await Task.CompletedTask;
     }
     public Task Collect(long actor,CollectForm f) => Locked(async()=>

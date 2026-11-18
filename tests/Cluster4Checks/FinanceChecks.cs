@@ -554,6 +554,71 @@ public static class FinanceChecks
                 "F05: Approved withdrawal deducts frozen funds once");
         }
 
+        // F04/F03 Security: Bypass PayExtraByWallet=false rejected & reschedule-cheaper + cancel net-paid prevents double refund
+        long secReschedOrder, cheaperOrder;
+        decimal balBeforeSecRefund;
+        await using (var db = new QuanLySanBaiContext(options))
+        {
+            var topupGw2 = await MakeWalletSvc(db).CreateDepositQr(other, 300000m);
+            var topupCode2 = (await db.GiaoDichCongThanhToans.SingleAsync(g => g.Id == topupGw2)).MaDonHangCong;
+            await MakeWebhookSvc(db).ProcessSePayWebhook(MakeWebhookJson(100099, 300000m, topupCode2), "Apikey SEPAY_TEST_API_KEY_999");
+
+            var bsvc = new BookingService(db, bookingOpt);
+            secReschedOrder = await bsvc.Book(other, new BookingForm { CourtId = c2, SlotId = s2a, Date = VietnamTime.Today.AddDays(25) });
+            await MakeWalletSvc(db).PayBookingWithWallet(other, new PayWalletForm { OrderId = secReschedOrder, Purpose = "THANH_TOAN", Key = Guid.NewGuid().ToString("N") });
+
+            cheaperOrder = await bsvc.Book(other, new BookingForm { CourtId = c2, SlotId = s2b, Date = VietnamTime.Today.AddDays(26) });
+            await MakeWalletSvc(db).PayBookingWithWallet(other, new PayWalletForm { OrderId = cheaperOrder, Purpose = "THANH_TOAN", Key = Guid.NewGuid().ToString("N") });
+            balBeforeSecRefund = (await db.ViNguoiDungs.AsNoTracking().SingleAsync(x => x.NguoiDungId == other)).SoDuKhaDung;
+        }
+        await using (var db = new QuanLySanBaiContext(options))
+        {
+            var ord = await db.DonDatSans.SingleAsync(d => d.Id == secReschedOrder);
+            var rsvc = new RescheduleService(db, new AccessService(db), MakeWalletSvc(db));
+            await Reject(() => rsvc.ExecuteReschedule(other, new RescheduleForm
+            {
+                OrderId = secReschedOrder,
+                Version = Convert.ToBase64String(ord.RowVersion),
+                NewCourtId = c2,
+                NewSlotId = s2b,
+                NewDate = VietnamTime.Today.AddDays(25),
+                PayExtraByWallet = false
+            }), "F04 Security: Reschedule to expensive slot with PayExtraByWallet=false rejected");
+        }
+        await using (var db = new QuanLySanBaiContext(options))
+        {
+            var ordCheaper = await db.DonDatSans.SingleAsync(d => d.Id == cheaperOrder);
+            var rsvc = new RescheduleService(db, new AccessService(db), MakeWalletSvc(db));
+            await rsvc.ExecuteReschedule(other, new RescheduleForm
+            {
+                OrderId = cheaperOrder,
+                Version = Convert.ToBase64String(ordCheaper.RowVersion),
+                NewCourtId = c2,
+                NewSlotId = s2a,
+                NewDate = VietnamTime.Today.AddDays(26),
+                Reason = "Đổi xuống giờ rẻ hơn",
+                PayExtraByWallet = true
+            });
+
+            var balAfterResched = (await db.ViNguoiDungs.AsNoTracking().SingleAsync(x => x.NguoiDungId == other)).SoDuKhaDung;
+            var refundSvc = new RefundService(db, new AccessService(db), MakeWalletSvc(db), TimeProvider.System);
+            var cancelPreview = await refundSvc.PreviewCancel(other, cheaperOrder);
+            var ordUpdated = await db.DonDatSans.SingleAsync(d => d.Id == cheaperOrder);
+            await refundSvc.CancelWithRefund(other, new OrderActionForm
+            {
+                Id = cheaperOrder,
+                Version = Convert.ToBase64String(ordUpdated.RowVersion),
+                Reason = "Hủy sau khi đổi xuống giờ rẻ hơn"
+            });
+
+            var balAfterCancel = (await db.ViNguoiDungs.AsNoTracking().SingleAsync(x => x.NguoiDungId == other)).SoDuKhaDung;
+            Check(balAfterResched == balBeforeSecRefund + 20000m &&
+                  cancelPreview.TotalPaid == 100000m &&
+                  cancelPreview.RefundAmount == 100000m &&
+                  balAfterCancel == balBeforeSecRefund + 120000m,
+                "F04 + F03 Security: Reschedule cheaper refunds difference once and cancel only refunds remaining net paid");
+        }
+
         // C04/A03: Price weekday range validation, bulk weekdays creation, and QUAN_LY_GIA staff permission
         await using (var db = new QuanLySanBaiContext(options))
         {

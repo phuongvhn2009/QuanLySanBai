@@ -181,9 +181,7 @@ public class WalletService(
         if (order.TrangThai == "CHO_THANH_TOAN" && (order.ThoiGianHetHanGiuCho is null || order.ThoiGianHetHanGiuCho <= now))
             throw new BusinessException("Đơn đã hết hạn giữ chỗ.");
 
-        var paid = await db.ThanhToanDons
-            .Where(p => p.DonDatSanId == order.Id && p.TrangThai == "THANH_CONG")
-            .SumAsync(p => (decimal?)p.SoTien) ?? 0m;
+        var paid = await OrderFinance.NetPaidAsync(db, order.Id);
         var totalDue = order.TongTienPhaiTra ?? 0m;
         var remaining = totalDue - paid;
         if (remaining <= 0)
@@ -218,6 +216,7 @@ public class WalletService(
         if (order.TrangThai == "CHO_THANH_TOAN" && paid + amountToPay >= order.TienCocYeuCau)
         {
             order.TrangThai = "DA_XAC_NHAN";
+            order.ThoiGianHetHanGiuCho = null;
             order.NgayCapNhat = now;
             foreach (var c in activeSlots)
             {

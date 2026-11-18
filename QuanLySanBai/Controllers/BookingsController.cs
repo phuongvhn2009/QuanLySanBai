@@ -95,7 +95,7 @@ public class BookingsController(QuanLySanBaiContext db, BookingService service) 
             .SingleOrDefaultAsync(d => d.Id == id && d.NguoiDungId == userId);
         if (order is null) return NotFound();
 
-        var paid = order.ThanhToanDons.Where(p => p.TrangThai == "THANH_CONG").Sum(p => p.SoTien);
+        var paid = OrderFinance.ComputeNetPaid(order.ThanhToanDons);
         var now = await service.ServerNow();
         var activeSlot = order.ChiTietDatSans.FirstOrDefault(c => c.TrangThaiSlot is not ("DA_DOI" or "DA_HUY"));
 

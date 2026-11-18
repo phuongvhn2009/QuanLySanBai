@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using QuanLySanBai.Data;
+using QuanLySanBai.Models.Entities;
 
 namespace QuanLySanBai.Services;
 
@@ -16,6 +18,32 @@ public static class VietnamTime
     public static DateTime Start(DateOnly date, TimeOnly time) => date.ToDateTime(time);
     public static DateTime End(DateOnly date, TimeOnly time) => time == TimeOnly.MinValue ? date.AddDays(1).ToDateTime(time) : date.ToDateTime(time);
     public static bool ValidHours(TimeOnly start, TimeOnly end) => start < end || end == TimeOnly.MinValue && start > TimeOnly.MinValue;
+}
+
+public static class OrderFinance
+{
+    public static async Task<decimal> NetPaidAsync(QuanLySanBaiContext db, long orderId)
+    {
+        var grossPaid = await db.ThanhToanDons
+            .Where(p => p.DonDatSanId == orderId && p.TrangThai == "THANH_CONG")
+            .SumAsync(p => (decimal?)p.SoTien) ?? 0m;
+        var refunded = await db.HoanTiens
+            .Where(h => h.ThanhToanDon.DonDatSanId == orderId &&
+                        h.ThanhToanDon.TrangThai == "THANH_CONG" &&
+                        h.TrangThai == "THANH_CONG")
+            .SumAsync(h => (decimal?)h.SoTien) ?? 0m;
+        return Math.Max(0m, grossPaid - refunded);
+    }
+
+    public static decimal ComputeNetPaid(IEnumerable<ThanhToanDon> payments) =>
+        Math.Max(0m,
+            payments.Where(p => p.TrangThai == "THANH_CONG").Sum(p => p.SoTien) -
+            payments.Where(p => p.TrangThai == "THANH_CONG").SelectMany(p => p.HoanTiens).Where(h => h.TrangThai == "THANH_CONG").Sum(h => h.SoTien));
+
+    public static MucPhiHuyDoi? MatchFeeTier(ChinhSachHuyDoi policy, decimal hours) =>
+        policy.MucPhiHuyDois.OrderBy(m => m.SoGioTuTruocTran)
+            .FirstOrDefault(m => hours >= m.SoGioTuTruocTran && (m.SoGioDenTruocTran is null || hours < m.SoGioDenTruocTran))
+        ?? policy.MucPhiHuyDois.OrderBy(m => m.SoGioTuTruocTran).FirstOrDefault();
 }
 
 public class BusinessErrorFilter(ILogger<BusinessErrorFilter> logger) : IExceptionFilter
