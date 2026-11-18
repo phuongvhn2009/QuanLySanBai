@@ -20,6 +20,14 @@ builder.Services.AddScoped<DevelopmentSeeder>();
 builder.Services.AddScoped<BookingService>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<OperationService>();
+builder.Services.AddScoped<VietQrService>();
+builder.Services.AddScoped<SePayService>();
+builder.Services.AddScoped<WalletService>();
+builder.Services.AddScoped<PaymentService>();
+builder.Services.AddScoped<WebhookService>();
+builder.Services.AddScoped<RefundService>();
+builder.Services.AddScoped<RescheduleService>();
+builder.Services.AddOptions<QuanLySanBai.ViewModels.SePayOptions>().BindConfiguration("SePay");
 builder.Services.AddOptions<QuanLySanBai.ViewModels.OperationOptions>().BindConfiguration("Operations").Validate(o=>o.CheckInEarlyMinutes is >=0 and <=120).ValidateOnStart();
 builder.Services.AddOptions<QuanLySanBai.ViewModels.BookingOptions>().BindConfiguration("Booking").Validate(o=>o.HoldMinutes is >=1 and <=60 && o.ExpiryIntervalSeconds is >=5 and <=300,"Invalid booking options").ValidateOnStart();
 builder.Services.AddHostedService<HoldExpiryWorker>();
@@ -50,6 +58,10 @@ if(args.Contains("--seed-demo"))
 }
 
 // Configure the HTTP request pipeline.
+app.UseForwardedHeaders(new ForwardedHeadersOptions
+{
+    ForwardedHeaders = Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedFor | Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedProto
+});
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Home/Error");

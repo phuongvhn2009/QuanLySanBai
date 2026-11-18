@@ -1,0 +1,91 @@
+@model QuanLySanBai.ViewModels.ReschedulePreviewVM
+@{
+    ViewData["Title"] = $"Đổi lịch đơn {Model.Order.MaDatSan}";
+    var version = Convert.ToBase64String(Model.Order.RowVersion);
+}
+
+<div class="mb-3">
+    <a asp-action="Details" asp-route-id="@Model.Order.Id" class="btn btn-outline-secondary">← Chi tiết đơn @Model.Order.MaDatSan</a>
+</div>
+
+<h1>Đổi lịch đặt sân — Đơn @Model.Order.MaDatSan</h1>
+
+<div class="card p-3 mb-4">
+    <h2 class="h5">Lịch hiện tại</h2>
+    <p class="mb-1"><strong>@Model.CurrentSlot.San.TenSan</strong> · Ngày <strong>@Model.CurrentSlot.NgaySuDung.ToString("dd/MM/yyyy")</strong> · @Model.CurrentSlot.GioBatDau.ToString("HH:mm")–@(Model.CurrentSlot.GioKetThuc == TimeOnly.MinValue ? "24:00" : Model.CurrentSlot.GioKetThuc.ToString("HH:mm"))</p>
+    <p class="mb-0 text-muted small">Giá cũ: @Model.CurrentSlot.GiaThue.ToString("N0") đ · Đã thanh toán: @Model.PaidAmount.ToString("N0") đ · Phí đổi lịch theo chính sách (@Model.ChangeFeePercent.ToString("0.##")%): <strong>@Model.ChangeFeeAmount.ToString("N0") đ</strong></p>
+</div>
+
+@if (!Model.AllowChange)
+{
+    <div class="alert alert-danger">@Model.DisallowReason</div>
+}
+else
+{
+    <form method="get" class="card p-3 mb-4 d-flex flex-row gap-2 align-items-end flex-wrap">
+        <input type="hidden" name="id" value="@Model.Order.Id" />
+        <label class="mb-0">
+            Xem khung giờ trống ngày
+            <input type="date" name="date" value="@Model.SelectedDate.ToString("yyyy-MM-dd")" class="form-control" />
+        </label>
+        <button type="submit" class="btn btn-outline-primary">Tìm khung giờ trống</button>
+    </form>
+
+    @if (Model.AvailableSlots.Count == 0)
+    {
+        <div class="empty-state">Không còn khung giờ trống phù hợp trong ngày @Model.SelectedDate.ToString("dd/MM/yyyy"). Hãy thử chọn ngày khác.</div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table align-middle">
+                <thead>
+                    <tr>
+                        <th>Sân</th>
+                        <th>Khung giờ mới</th>
+                        <th class="text-end">Giá mới</th>
+                        <th class="text-end">Chênh lệch + Phí đổi</th>
+                        <th>Thao tác</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var opt in Model.AvailableSlots)
+                    {
+                        var diff = opt.NewPrice - Model.CurrentSlot.GiaThue + Model.ChangeFeeAmount;
+                        <tr>
+                            <td><strong>@opt.CourtName</strong></td>
+                            <td>@Model.SelectedDate.ToString("dd/MM/yyyy") · @opt.Start.ToString("HH:mm")–@(opt.End == TimeOnly.MinValue ? "24:00" : opt.End.ToString("HH:mm"))</td>
+                            <td class="text-end">@opt.NewPrice.ToString("N0") đ</td>
+                            <td class="text-end">
+                                @if (diff > 0)
+                                {
+                                    <span class="text-danger">+@diff.ToString("N0") đ (Cần bù)</span>
+                                }
+                                else if (diff < 0)
+                                {
+                                    <span class="text-success">@diff.ToString("N0") đ (Hoàn vào ví)</span>
+                                }
+                                else
+                                {
+                                    <span>0 đ</span>
+                                }
+                            </td>
+                            <td>
+                                <form asp-action="DoiLich" method="post" class="d-flex gap-2 align-items-center" data-confirm="Xác nhận đổi sang khung giờ này?">
+                                    <input type="hidden" name="OrderId" value="@Model.Order.Id" />
+                                    <input type="hidden" name="Version" value="@version" />
+                                    <input type="hidden" name="NewCourtId" value="@opt.CourtId" />
+                                    <input type="hidden" name="NewSlotId" value="@opt.SlotId" />
+                                    <input type="hidden" name="NewDate" value="@Model.SelectedDate.ToString("yyyy-MM-dd")" />
+                                    <input type="hidden" name="PayExtraByWallet" value="true" />
+                                    <button type="submit" class="btn btn-sm btn-primary">Chọn đổi lịch</button>
+                                </form>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <p class="text-muted small">Số dư ví hiện tại của bạn: <strong>@Model.WalletBalance.ToString("N0") đ</strong>. Nếu đổi lịch thất bại do khung giờ vừa bị đặt, lịch cũ của bạn vẫn được giữ nguyên.</p>
+    }
+}

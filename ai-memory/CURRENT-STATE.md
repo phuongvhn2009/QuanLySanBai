@@ -1,16 +1,18 @@
 # Trạng thái bàn giao
 
-Cập nhật: 2026-11-16, Asia/Saigon. Đây là ảnh chụp trạng thái tại lúc ghi.
+Cập nhật: 2026-11-17, Asia/Saigon.
 
-## Git
+## Git & Tích hợp
 
 - Repo: https://github.com/phuongvhn2009/QuanLySanBai.git
-- Nhánh đang làm: `master` (kế thừa `56e4cc3` và đã merge `MQ-KiemThuCotLoi` `8abc588`, đồng bộ `origin/master`).
-- Master hiện chứa đầy đủ cụm 1–6 (bao gồm vận hành tại quầy, `OperationService`, phân quyền tường minh, kiểm tra duyệt cơ sở `DA_DUYET`, đồng bộ SignalR realtime và kiểm thử SQL/HTTP/WebSocket 148 assertions).
-- Cụm 5: `MO-VanHanhDon`, commit `f058a96` (nền `bab70be`), đã push và đã được hợp nhất qua `MQ-KiemThuCotLoi` vào `master`.
-- Cụm 6: `MQ-KiemThuCotLoi`, commit `8abc588`, kế thừa cụm 5 + sửa quyền `TAO_DON` trong SQL và cập nhật tài liệu, đã push và đã merge vào `master`.
-- Graphify: `Tools-Graphify`, commit `c85a38d`, kế thừa cụm 5–6, đã push, chưa merge master.
-- Các nhánh cụm 1–4: MA-TaiKhoanPhanQuyen, MC-CauHinhCoSo, MB-XemLichDatSan. Các cụm này đã merge master; một số nhánh trên GitHub đã có commit mới hơn nhánh local.
+- Nhánh chính: `master` (đã hợp nhất đầy đủ nhánh Cụm 5 `MO-VanHanhDon` và Cụm 6 `MQ-KiemThuCotLoi`, đồng bộ `origin/master`).
+- Kết quả kiểm thử tự động ngày 2026-11-17:
+  - Trên `MQ-KiemThuCotLoi`: **106/106 assertions** `Cluster4Checks` + **21/21 assertions** `AccountChecks` đạt 100%.
+  - Trên `master`: **149/149 assertions** `Cluster4Checks` (gồm nền tảng, duyệt cơ sở, SignalR WebSocket và nghiệp vụ vận hành quầy) đạt 100%.
+- Đồng bộ Notion ngày 2026-11-17:
+  - Toàn bộ 8 tác vụ Cụm 5 & 6 (`O01–O06`, `Q01–Q02`) đã được nghiệm thu và cập nhật trạng thái **Hoàn thành** trực tiếp qua Notion API.
+  - Tổng số việc hoàn thành trên Notion: **29/49 tác vụ (59%)**.
+  - Tác vụ còn lại: 20 tác vụ thuộc các cụm mở rộng (`F01–F05`, `X01–X05`, `R01–R03`, `G01–G04`, `Q03–Q05`).
 
 ## Trạng thái các tài liệu và cấu hình trên master
 
@@ -83,3 +85,11 @@ Folder ai-memory đã được commit và push lên `origin/master` ngày 2026-1
   - Build `tests/Cluster4Checks/Cluster4Checks.csproj` (`-p:NuGetAudit=false`): **0 Warning(s), 0 Error(s)**.
   - Chạy `Cluster4Checks`: đạt **148/148 assertions** (SQL + concurrency + HTTP + SignalR WebSocket) trên database tạm `QuanLySanBai_Cluster4Tests_c73b219e48744f10bceb9b6237954501`, đã dọn sạch. Chưa kiểm thử trực quan trên trình duyệt.
 - **Lưu ý triển khai**: Database local/production đã cài trước đó cần đảm bảo đã áp dụng `Data/Updates/001_OrderRowVersion.sql` và cập nhật lại stored procedure `dbo.usp_DatSanMotKhung` theo `Data/QuanLySanBai_SQLServer.sql` mới nhất.
+
+## Nghiên cứu tham khảo AloBo (2026-11-16)
+
+- Đã đọc trang công khai, App Store và wiki hướng dẫn AloBo; đây là nghiên cứu ý tưởng, **không có thay đổi code hay xác nhận sản phẩm**. Chi tiết và thứ tự ưu tiên ở [ALOBO-IDEAS.md](ALOBO-IDEAS.md).
+- Gợi ý cần cân nhắc trước: bảng lịch vận hành theo sân × giờ; tìm sân theo giờ và khoảng giá (giá lọc phải dựa trên slot/ngày thật); sau đó mới tích hợp QR/cổng thanh toán tự xác nhận.
+- Dự án đã có lọc môn/khu vực/ngày, trang lịch có giá/cọc/chính sách, giữ chỗ có hạn, lịch/đơn vận hành, đặt tại quầy, ghi thu thủ công và check-in. Không ghi các gợi ý trên như tính năng đã triển khai.
+- Ưu tiên sau khi luồng lõi ổn định: gắn dịch vụ bán thêm vào đơn; để kho, hội viên, sự kiện/social và báo cáo nâng cao ở backlog mở rộng.
+- AloBo tự công bố hơn 2.500 chủ sân; App Store hiển thị khoảng 22k lượt đánh giá. Đây là chỉ dấu công khai, không phải xác minh độc lập về quy mô hay thời gian hoạt động.

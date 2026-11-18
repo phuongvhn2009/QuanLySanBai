@@ -41,6 +41,8 @@ public class PriceForm
     public long CourtId { get; set; }
     public int SlotId { get; set; }
     [Range(1,7)] public int Weekday { get; set; } = 1;
+    public List<int>? Weekdays { get; set; }
+    public bool ReplaceExisting { get; set; }
     [Range(typeof(decimal),"0","999999999999.99")] public decimal Price { get; set; }
     [Range(typeof(decimal),"0","999999999999.99")] public decimal Deposit { get; set; }
     public DateOnly From { get; set; } = VietnamDate();
@@ -74,6 +76,9 @@ public class LockForm
 public class FacilityDashboard
 {
     public CoSo Facility { get; set; } = null!;
+    public bool IsOwner { get; set; } = true;
+    public bool CanManagePrices { get; set; } = true;
+    public List<string> ReadinessWarnings { get; set; } = [];
     public List<San> Courts { get; set; } = [];
     public List<KhungGioMacDinh> Slots { get; set; } = [];
     public List<LichHoatDongCoSo> Hours { get; set; } = [];

@@ -52,6 +52,9 @@ try
     Check(await Scalar("SELECT COUNT(*) FROM sys.tables WHERE is_ms_shipped=0")==48,"N01: 48 tables installed");
     Check(await Scalar("SELECT COUNT(*) FROM sys.triggers WHERE parent_class=1 AND is_ms_shipped=0")==13,"N01: 13 triggers installed");
     Check(await Scalar("SELECT COUNT(*) FROM sys.procedures WHERE is_ms_shipped=0")==3,"N01: 3 stored procedures installed");
+    var updateScript=File.ReadAllText(Path.Combine(root,"Data","Updates","002_Cluster7_PaymentWebhook.sql"));
+    await using(var uc=new SqlConnection(connection)) { await uc.OpenAsync(); foreach(var batch in Regex.Split(updateScript,@"^GO\s*$",RegexOptions.Multiline|RegexOptions.IgnoreCase)) if(!string.IsNullOrWhiteSpace(batch)) { await using var command=new SqlCommand(batch,uc) { CommandTimeout=120 }; await command.ExecuteNonQueryAsync(); } }
+    Check(await Scalar("SELECT COUNT(*) FROM sys.tables WHERE is_ms_shipped=0")==49,"F01: Cluster 7 migration applied cleanly (49 tables)");
     var hasher=new PasswordHasher<NguoiDung>();
     async Task<long> User(string phone,string role) => await With(async db=> { var u=new NguoiDung { HoVaTen=role,SoDienThoai=phone,TrangThai=true,NgayTao=VietnamTime.Now,NgayCapNhat=VietnamTime.Now }; u.MatKhauHash=hasher.HashPassword(u,"Cluster4Test123!"); u.NguoiDungVaiTros.Add(new NguoiDungVaiTro { VaiTroId=(await db.VaiTros.SingleAsync(r=>r.MaVaiTro==role)).Id,NgayGan=VietnamTime.Now }); db.Add(u); await db.SaveChangesAsync(); return u.Id; });
     var owner=await User("0988000001","KHACH_HANG"); var customer=await User("0988000002","KHACH_HANG"); var other=await User("0988000003","KHACH_HANG"); var admin=await User("0988000004","ADMIN");
@@ -152,11 +155,13 @@ try
     Check((await With(db=>new BookingService(db,settings).Calendar(court,tomorrow)))!.Slots[0].CanBook,"B04: expired slot available again");
     var midnightOrder=await Book(customer,midnight,tomorrow); Check(midnightOrder>0,"B05: 23:00 to 24:00 booking succeeds");
     count+=await OperationChecks.Run(options,owner,customer,other,court,slot,facility,Sql);
+    count+=await FinanceChecks.Run(options,admin,owner,customer,other,facility,court,slot,midnight,Sql,Scalar);
     // Start actual MVC with the disposable DB to exercise auth, CSRF, binding, errors and views.
     var listener=new System.Net.Sockets.TcpListener(IPAddress.Loopback,0); listener.Start(); var port=((IPEndPoint)listener.LocalEndpoint).Port; listener.Stop();
     var start=new ProcessStartInfo("dotnet") { UseShellExecute=false,CreateNoWindow=true,RedirectStandardOutput=true,RedirectStandardError=true,WorkingDirectory=root };
     start.ArgumentList.Add(Path.Combine(AppContext.BaseDirectory,"QuanLySanBai.dll")); start.ArgumentList.Add("--contentRoot"); start.ArgumentList.Add(Path.Combine(root,"QuanLySanBai")); start.ArgumentList.Add("--urls"); start.ArgumentList.Add("http://127.0.0.1:"+port);
     start.Environment["ConnectionStrings__DefaultConnection"]=connection; start.Environment["ASPNETCORE_ENVIRONMENT"]="Development"; start.Environment["Booking__ExpiryIntervalSeconds"]="5";
+    start.Environment["SePay__BankCode"]="MBBank"; start.Environment["SePay__BankName"]="MB Bank"; start.Environment["SePay__AccountNumber"]="099888777666"; start.Environment["SePay__AccountName"]="CHU SAN TEST"; start.Environment["SePay__WebhookApiKey"]="SEPAY_HTTP_TEST_KEY";
     server=Process.Start(start)!; var log=new System.Collections.Concurrent.ConcurrentQueue<string>(); server.OutputDataReceived+=(_,e)=>{if(e.Data!=null)log.Enqueue(e.Data);}; server.ErrorDataReceived+=(_,e)=>{if(e.Data!=null)log.Enqueue(e.Data);}; server.BeginOutputReadLine(); server.BeginErrorReadLine();
     var handler=new HttpClientHandler { AllowAutoRedirect=false,CookieContainer=new CookieContainer() };
     using var client=new HttpClient(handler) { BaseAddress=new Uri("http://127.0.0.1:"+port) };
@@ -269,9 +274,38 @@ try
     Check(Regex.Matches(adminHtml,"aria-label=\"Điều hướng chính\"").Count==1,"UI: exactly one primary navigation");
     Check((int)(await client.GetAsync("/")).StatusCode==302 && (await client.GetAsync("/")).Headers.Location!.ToString().Contains("Admin"),"UI: admin lands in admin area");
     Check((int)(await client.GetAsync("/Admin/Catalog")).StatusCode==200,"C02: admin catalog renders");
+    Check((int)(await client.GetAsync("/Admin/Payouts")).StatusCode==200,"F05: admin payouts and webhook logs render");
     response=await Post("/Admin/Catalog/Sport",new() { ["Id"]=sportId.ToString(),["Code"]="TEST_UPDATED",["Name"]="Test sport",["Active"]="false" },"/Admin/Catalog");
     Check((int)response.StatusCode==302 && await Scalar($"SELECT COUNT(*) FROM Mon_The_Thao WHERE id={sportId} AND trang_thai=0")==1,"C02: admin deactivates sport through form");
     await Sql($"UPDATE Mon_The_Thao SET trang_thai=1 WHERE id={sportId}");
+    await Post("/Account/Logout",new(),"/Account/Profile");
+    // HTTP End-to-End: Customer creates booking -> creates SePay QR -> watches order over SignalR -> Webhook hits /api/webhook/sepay -> PaymentChanged pushed & receipt renders!
+    await Post("/Account/Login",new() { ["Login"]="0988000002",["Password"]="Cluster4Test123!" },"/Account/Login");
+    Check((int)(await client.GetAsync("/Wallet")).StatusCode==200,"F02: customer wallet page renders");
+    var httpPayOrder=await Book(customer,slot,tomorrow.AddDays(30));
+    Check((int)(await client.GetAsync("/ThanhToan/Index/"+httpPayOrder)).StatusCode==200,"F01: payment selection page renders");
+    var qrPost=await Post("/ThanhToan/TaoQr",new() { ["OrderId"]=httpPayOrder.ToString(),["Purpose"]="COC" },"/ThanhToan/Index/"+httpPayOrder);
+    Check((int)qrPost.StatusCode==302 && qrPost.Headers.Location?.ToString().StartsWith("/ThanhToan/Qr/")==true,"F01: HTTP QR creation redirects to QR page");
+    var qrUrl=qrPost.Headers.Location!.ToString();
+    var qrHtml=await client.GetStringAsync(qrUrl);
+    var gwCodeMatch=Regex.Match(qrHtml,@"id=""transferContent"">(QSB[A-Z0-9]+)<");
+    Check(gwCodeMatch.Success,"F01: QR page renders unique transfer code");
+    var gwCode=gwCodeMatch.Groups[1].Value;
+    using var orderSocket=await OpenSocket(client.BaseAddress!,handler.CookieContainer);
+    await SendSocket(orderSocket,$"{{\"type\":1,\"invocationId\":\"watchOrder\",\"target\":\"WatchOrder\",\"arguments\":[{httpPayOrder}]}}");
+    var watchOrderAck=await ReadSocket(orderSocket,"\"invocationId\":\"watchOrder\"");
+    Check(!watchOrderAck.Contains("error"),"Realtime: order payment subscription accepted");
+    using var rawClient=new HttpClient { BaseAddress=client.BaseAddress };
+    var badHookReq=new HttpRequestMessage(HttpMethod.Post,"/api/webhook/sepay") { Content=new StringContent("{\"id\":777001,\"transferType\":\"in\",\"accountNumber\":\"099888777666\",\"transferAmount\":50000.25,\"code\":\""+gwCode+"\"}",System.Text.Encoding.UTF8,"application/json") };
+    badHookReq.Headers.TryAddWithoutValidation("Authorization","Apikey INVALID");
+    Check((int)(await rawClient.SendAsync(badHookReq)).StatusCode==401,"F01 HTTP: SePay webhook rejects wrong Apikey with 401");
+    var goodHookReq=new HttpRequestMessage(HttpMethod.Post,"/api/webhook/sepay") { Content=new StringContent("{\"id\":777002,\"transferType\":\"in\",\"accountNumber\":\"099888777666\",\"transferAmount\":50000.25,\"code\":\""+gwCode+"\",\"content\":\"TT "+gwCode+"\",\"referenceCode\":\"FT777002\"}",System.Text.Encoding.UTF8,"application/json") };
+    goodHookReq.Headers.TryAddWithoutValidation("Authorization","Apikey SEPAY_HTTP_TEST_KEY");
+    var hookResp=await rawClient.SendAsync(goodHookReq);
+    Check((int)hookResp.StatusCode==200 && (await hookResp.Content.ReadAsStringAsync()).Contains("\"success\":true"),"F01 HTTP: SePay webhook accepts valid Apikey and confirms order");
+    Check((await ReadSocket(orderSocket,"PaymentChanged")).Contains("PaymentChanged"),"Realtime: SePay webhook notifies watching client via PaymentChanged");
+    var httpPayId=await Scalar($"SELECT id FROM Thanh_Toan_Don WHERE don_dat_san_id={httpPayOrder}");
+    Check((int)(await client.GetAsync("/ThanhToan/HoaDon/"+httpPayId)).StatusCode==200,"F01: printable receipt page renders");
     await Post("/Account/Logout",new(),"/Account/Profile");
     await Run(async db=> { db.ThanhVienCoSos.Add(new ThanhVienCoSo { CoSoId=facility,NguoiDungId=other,VaiTroNoiBo="NHAN_VIEN",TrangThaiHoatDong=true,NgayThamGia=VietnamTime.Now }); await db.SaveChangesAsync(); });
     await Post("/Account/Login",new() { ["Login"]="0988000003",["Password"]="Cluster4Test123!" },"/Account/Login");

@@ -10,6 +10,7 @@
 } else {
 @if(await Access.HasPermission(actor,c.Id,"XEM_LICH")){<a class="btn btn-outline-primary" href="/CoSo/Orders?facilityId=@c.Id">Lịch và đơn đặt</a>}
 @if(c.ChuSoHuuId==actor) { <a class="btn btn-primary" href="/CoSo/Configuration?id=@c.Id">Quản lý sân và cấu hình</a> }
+else if(await Access.HasPermission(actor,c.Id,"QUAN_LY_GIA")) { <a class="btn btn-primary" href="/CoSo/Configuration?id=@c.Id">Quản lý bảng giá</a> }
 @if(manages.Contains(c.Id)) { <a class="btn btn-outline-primary" asp-controller="Members" asp-action="Index" asp-route-coSoId="@c.Id">Quản lý nhân viên</a> }
 @if(c.ChuSoHuuId!=actor && !manages.Contains(c.Id)) { <p class="text-muted mb-0">Bạn chưa được cấp quyền quản lý nhân viên. Liên hệ chủ cơ sở nếu cần.</p> }
 }

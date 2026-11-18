@@ -28,11 +28,14 @@ public class OperationService(QuanLySanBaiContext db,AccessService access,TimePr
         if(Convert.ToBase64String(d.RowVersion)!=version) throw new BusinessException("Đơn đã thay đổi. Tải lại trang trước khi thao tác.");
     }
     private async Task<decimal> Paid(long id) => await db.ThanhToanDons.Where(p=>p.DonDatSanId==id && p.TrangThai=="THANH_CONG").SumAsync(p=>(decimal?)p.SoTien) ?? 0m;
+    private static List<ChiTietDatSan> ActiveSlots(DonDatSan d) =>
+        d.ChiTietDatSans.Where(c => c.TrangThaiSlot is not ("DA_DOI" or "DA_HUY")).ToList();
     private static void Transition(DonDatSan d,string order,string slot,DateTime now)
-    { d.TrangThai=order;d.NgayCapNhat=now;foreach(var c in d.ChiTietDatSans){c.TrangThaiSlot=slot;c.NgayCapNhat=now;} }
+    { d.TrangThai=order;d.NgayCapNhat=now;foreach(var c in ActiveSlots(d)){c.TrangThaiSlot=slot;c.NgayCapNhat=now;} }
     private async Task ConfirmPending(DonDatSan d,decimal paid,DateTime now)
     {
-        if(d.TrangThai!="CHO_THANH_TOAN" || d.ChiTietDatSans.Count!=1 || d.ChiTietDatSans.Any(c=>c.TrangThaiSlot!="GIU_CHO")) throw new BusinessException("Đơn không còn ở trạng thái giữ chỗ.");
+        var active = ActiveSlots(d);
+        if(d.TrangThai!="CHO_THANH_TOAN" || active.Count!=1 || active.Any(c=>c.TrangThaiSlot!="GIU_CHO")) throw new BusinessException("Đơn không còn ở trạng thái giữ chỗ.");
         if(d.ThoiGianHetHanGiuCho is null || d.ThoiGianHetHanGiuCho<=now) throw new BusinessException("Đã hết hạn giữ chỗ; không được nhận tiền/xác nhận đơn này.");
         if(paid<d.TienCocYeuCau) throw new BusinessException("Lần thu đầu phải đạt mức cọc yêu cầu để xác nhận đơn.");
         Transition(d,"DA_XAC_NHAN","DA_XAC_NHAN",now); await Task.CompletedTask;
@@ -55,9 +58,10 @@ public class OperationService(QuanLySanBaiContext db,AccessService access,TimePr
     public Task CheckIn(long actor,OrderActionForm f) => Locked(async()=>
     {
         var d=await Load(f.Id);await Require(actor,d.CoSoId,"CHECK_IN");Version(d,f.Version);
-        if(d.TrangThai!="DA_XAC_NHAN" || d.ChiTietDatSans.Count!=1 || d.ChiTietDatSans.Any(c=>c.TrangThaiSlot!="DA_XAC_NHAN")) throw new BusinessException("Chỉ check-in đơn đã xác nhận và chưa check-in.");
+        var active=ActiveSlots(d);
+        if(d.TrangThai!="DA_XAC_NHAN" || active.Count!=1 || active.Any(c=>c.TrangThaiSlot!="DA_XAC_NHAN")) throw new BusinessException("Chỉ check-in đơn đã xác nhận và chưa check-in.");
         if(string.IsNullOrWhiteSpace(f.Code) || !(string.Equals(f.Code.Trim(),d.MaDatSan,StringComparison.Ordinal) || string.Equals(f.Code.Trim(),d.MaQrCheckin,StringComparison.Ordinal))) throw new BusinessException("Mã đặt sân/QR không đúng đơn.");
-        var c=d.ChiTietDatSans.Single();var now=Now;
+        var c=active.Single();var now=Now;
         if(now<VietnamTime.Start(c.NgaySuDung,c.GioBatDau).AddMinutes(-options.Value.CheckInEarlyMinutes) || now>=VietnamTime.End(c.NgaySuDung,c.GioKetThuc)) throw new BusinessException("Ngoài thời gian được check-in.");
         db.LichSuCheckIns.Add(new LichSuCheckIn { ChiTietDatSanId=c.Id,NhanVienCheckinId=actor,ThoiGianCheckin=now,PhuongThuc=f.Code.Trim()==d.MaQrCheckin ? "QR":"THU_CONG" });
         Transition(d,"DANG_SU_DUNG","DA_CHECK_IN",now);
@@ -65,8 +69,9 @@ public class OperationService(QuanLySanBaiContext db,AccessService access,TimePr
     public Task Complete(long actor,OrderActionForm f) => Locked(async()=>
     {
         var d=await Load(f.Id);await Require(actor,d.CoSoId,"CHECK_IN");Version(d,f.Version);
-        if(d.TrangThai!="DANG_SU_DUNG" || d.ChiTietDatSans.Count!=1 || d.ChiTietDatSans.Any(c=>c.TrangThaiSlot!="DA_CHECK_IN")) throw new BusinessException("Đơn chưa check-in hoặc đã kết thúc.");
-        if(d.ChiTietDatSans.Any(c=>VietnamTime.End(c.NgaySuDung,c.GioKetThuc)>Now)) throw new BusinessException("Chưa đến giờ kết thúc buổi.");
+        var active=ActiveSlots(d);
+        if(d.TrangThai!="DANG_SU_DUNG" || active.Count!=1 || active.Any(c=>c.TrangThaiSlot!="DA_CHECK_IN")) throw new BusinessException("Đơn chưa check-in hoặc đã kết thúc.");
+        if(active.Any(c=>VietnamTime.End(c.NgaySuDung,c.GioKetThuc)>Now)) throw new BusinessException("Chưa đến giờ kết thúc buổi.");
         if(await Paid(d.Id)<d.TongTienPhaiTra) throw new BusinessException("Chưa thu đủ tiền.");
         Transition(d,"HOAN_THANH","HOAN_THANH",Now);
     });
@@ -79,9 +84,10 @@ public class OperationService(QuanLySanBaiContext db,AccessService access,TimePr
             Version(d,f.Version);
             if(d.TrangThai is not("CHO_THANH_TOAN" or "DA_XAC_NHAN") || string.IsNullOrWhiteSpace(f.Reason) || f.Reason.Length>1000) throw new BusinessException("Đơn không thể hủy hoặc chưa nhập lý do hợp lệ.");
             if(await db.ThanhToanDons.AnyAsync(p=>p.DonDatSanId==d.Id && (p.TrangThai=="THANH_CONG" || p.TrangThai=="DANG_XU_LY"))) throw new BusinessException("Đơn đã thu tiền hoặc đang xử lý tiền; phải đi qua quy trình hoàn tiền.");
-            if(d.ChiTietDatSans.Any(c=>VietnamTime.Start(c.NgaySuDung,c.GioBatDau)<=Now)) throw new BusinessException("Đã đến giờ sử dụng, không thể hủy theo luồng chưa thu tiền.");
-            foreach(var c in d.ChiTietDatSans) db.LichSuHuySans.Add(new LichSuHuySan { ChiTietDatSanId=c.Id,NguoiYeuCauId=actor,NguoiXuLyId=actor,SoGioTruocTran=decimal.Round((decimal)(VietnamTime.Start(c.NgaySuDung,c.GioBatDau)-Now).TotalHours,2),LyDoHuy=f.Reason.Trim(),NgayHuy=Now });
-            courts=d.ChiTietDatSans.Select(c=>c.SanId).Distinct().ToList();
+            var active=ActiveSlots(d);
+            if(active.Any(c=>VietnamTime.Start(c.NgaySuDung,c.GioBatDau)<=Now)) throw new BusinessException("Đã đến giờ sử dụng, không thể hủy theo luồng chưa thu tiền.");
+            foreach(var c in active) db.LichSuHuySans.Add(new LichSuHuySan { ChiTietDatSanId=c.Id,NguoiYeuCauId=actor,NguoiXuLyId=actor,SoGioTruocTran=decimal.Round((decimal)(VietnamTime.Start(c.NgaySuDung,c.GioBatDau)-Now).TotalHours,2),LyDoHuy=f.Reason.Trim(),NgayHuy=Now });
+            courts=active.Select(c=>c.SanId).Distinct().ToList();
             Transition(d,"DA_HUY","DA_HUY",Now);d.TongTienSan=0;d.TongTienDichVu=0;d.TongPhiPhat=0;d.TienGiamGia=0;d.TienCocYeuCau=0;
         });
         if(updates is not null) foreach(var courtId in courts) await updates.Calendar(courtId);

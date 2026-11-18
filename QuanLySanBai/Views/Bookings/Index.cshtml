@@ -8,14 +8,19 @@
 }
 @foreach (var d in Model)
 {
+    var activeSlot = d.ChiTietDatSans.FirstOrDefault(c => c.TrangThaiSlot != "DA_DOI") ?? d.ChiTietDatSans.FirstOrDefault();
     <div class="card p-3 mb-2">
         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
             <div>
                 <a asp-action="Details" asp-route-id="@d.Id" class="fw-bold fs-6">@d.MaDatSan</a>
-                <span class="badge @(d.TrangThai == "CHO_THANH_TOAN" ? "bg-warning text-dark" : d.TrangThai == "DA_XAC_NHAN" ? "bg-success" : "bg-secondary") ms-2">@d.TrangThai</span>
+                <span class="badge @(d.TrangThai == "CHO_THANH_TOAN" ? "bg-warning text-dark" : d.TrangThai == "DA_XAC_NHAN" ? "bg-success" : "bg-secondary") ms-2">@QuanLySanBai.Services.OrderLabels.Status(d.TrangThai)</span>
+                @if (activeSlot is not null)
+                {
+                    <div class="small text-muted mt-1">@activeSlot.San.TenSan · @activeSlot.NgaySuDung.ToString("dd/MM/yyyy") · @activeSlot.GioBatDau.ToString("HH:mm")–@(activeSlot.GioKetThuc == TimeOnly.MinValue ? "24:00" : activeSlot.GioKetThuc.ToString("HH:mm"))</div>
+                }
             </div>
             <div class="text-end">
-                <span class="fs-5 fw-semibold text-primary">@d.TongTienPhaiTra?.ToString("N0") đ</span>
+                <span class="fs-5 fw-semibold text-primary">@((d.TongTienPhaiTra ?? 0m).ToString("N0")) đ</span>
             </div>
         </div>
     </div>

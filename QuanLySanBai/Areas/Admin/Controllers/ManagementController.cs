@@ -18,7 +18,7 @@ public class ManagementController(QuanLySanBaiContext db, RealtimeUpdates? updat
         if (id == AccessService.UserId(User)) return BadRequest("Không thể tự khóa tài khoản quản trị đang sử dụng.");
         var user = await db.NguoiDungs.FindAsync(id);
         if (user is null) return NotFound();
-        user.TrangThai = active; user.NgayCapNhat = DateTime.Now;
+        user.TrangThai = active; user.NgayCapNhat = VietnamTime.Now;
         await db.SaveChangesAsync();
         return RedirectToAction(nameof(Users));
     }
@@ -28,7 +28,7 @@ public class ManagementController(QuanLySanBaiContext db, RealtimeUpdates? updat
         if (decision is not ("DA_DUYET" or "TU_CHOI")) return BadRequest();
         var facility = await db.CoSos.FindAsync(id);
         if (facility is null) return NotFound();
-        facility.TrangThaiDuyet = decision; facility.NgayCapNhat = DateTime.Now;
+        facility.TrangThaiDuyet = decision; facility.NgayCapNhat = VietnamTime.Now;
         await db.SaveChangesAsync();
         if(updates is not null) {
             var users=await db.ThanhVienCoSos.Where(m=>m.CoSoId==id).Select(m=>m.NguoiDungId).ToListAsync();

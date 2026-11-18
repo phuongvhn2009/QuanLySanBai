@@ -1,0 +1,110 @@
+@model QuanLySanBai.ViewModels.AdminPayoutListVM
+@{
+    ViewData["Title"] = "Rút tiền & Nhật ký Webhook";
+}
+
+<div class="page-heading">
+    <div>
+        <p class="eyebrow">TÀI CHÍNH &amp; ĐỐI SOÁT</p>
+        <h1>Yêu cầu rút tiền &amp; Nhật ký Webhook SePay</h1>
+    </div>
+</div>
+
+<div class="card p-3 mb-4">
+    <h2 class="h5">Danh sách yêu cầu rút tiền</h2>
+    @if (Model.Withdrawals.Count == 0)
+    {
+        <p class="text-muted mb-0">Chưa có yêu cầu rút tiền nào.</p>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Người yêu cầu</th>
+                        <th>Ngân hàng / STK</th>
+                        <th class="text-end">Số tiền</th>
+                        <th>Trạng thái</th>
+                        <th>Xử lý</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var w in Model.Withdrawals)
+                    {
+                        <tr>
+                            <td>#@w.Id</td>
+                            <td>@w.Vi.NguoiDung.HoVaTen<br /><span class="small text-muted">@w.Vi.NguoiDung.SoDienThoai</span></td>
+                            <td>@w.TenNganHang · @w.SoTaiKhoan<br /><span class="small text-muted">@w.TenChuTaiKhoan</span></td>
+                            <td class="text-end fw-bold">@w.SoTien.ToString("N0") đ</td>
+                            <td><span class="badge @(w.TrangThai == "THANH_CONG" ? "bg-success" : w.TrangThai == "CHO_DUYET" ? "bg-warning text-dark" : "bg-secondary")">@w.TrangThai</span></td>
+                            <td>
+                                @if (w.TrangThai == "CHO_DUYET")
+                                {
+                                    <div class="d-flex gap-2 flex-wrap">
+                                        <form asp-action="Process" method="post" data-confirm="Xác nhận bạn đã chuyển khoản cho yêu cầu rút #@w.Id?">
+                                            <input type="hidden" name="RequestId" value="@w.Id" />
+                                            <input type="hidden" name="Approve" value="true" />
+                                            <button class="btn btn-sm btn-success">Duyệt đã chuyển</button>
+                                        </form>
+                                        <form asp-action="Process" method="post" class="d-flex gap-1" data-confirm="Từ chối và hoàn số dư đóng băng về ví khả dụng?">
+                                            <input type="hidden" name="RequestId" value="@w.Id" />
+                                            <input type="hidden" name="Approve" value="false" />
+                                            <input type="text" name="RejectReason" placeholder="Lý do từ chối" required maxlength="500" class="form-control form-control-sm" style="width:160px;" />
+                                            <button class="btn btn-sm btn-outline-danger">Từ chối</button>
+                                        </form>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <span class="small text-muted">@w.NgayXuLy?.ToString("dd/MM/yyyy HH:mm") @w.LyDoTuChoi</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+<div class="card p-3">
+    <h2 class="h5">Nhật ký Webhook SePay (100 sự kiện gần nhất)</h2>
+    @if (Model.WebhookLogs.Count == 0)
+    {
+        <p class="text-muted mb-0">Chưa có bản ghi webhook nào.</p>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Thời gian</th>
+                        <th>SePay ID</th>
+                        <th>Mã khớp</th>
+                        <th>Loại</th>
+                        <th class="text-end">Số tiền</th>
+                        <th>Trạng thái xử lý</th>
+                        <th>Ghi chú</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var l in Model.WebhookLogs)
+                    {
+                        <tr>
+                            <td class="small">@l.NgayTao.ToString("dd/MM/yyyy HH:mm:ss")</td>
+                            <td>@l.SepayTransactionId</td>
+                            <td><code>@l.MaThanhToan</code></td>
+                            <td>@l.LoaiChuyenTien</td>
+                            <td class="text-end">@(l.SoTien?.ToString("N0") ?? "-") đ</td>
+                            <td><span class="badge @(l.TrangThaiXuLy == "HOP_LE_DA_XU_LY" ? "bg-success" : l.TrangThaiXuLy == "TRUNG_LAP" ? "bg-info text-dark" : "bg-warning text-dark")">@l.TrangThaiXuLy</span></td>
+                            <td class="small">@l.GhiChu</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>

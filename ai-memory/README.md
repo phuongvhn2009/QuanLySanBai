@@ -2,6 +2,8 @@
 
 Đọc file này trước, sau đó đọc [CURRENT-STATE.md](CURRENT-STATE.md) và [PROJECT-RULES.md](PROJECT-RULES.md).
 
+Ý tưởng mở rộng chưa triển khai: [Tham khảo AloBo](ALOBO-IDEAS.md). Chỉ dùng làm backlog gợi ý, phải đối chiếu code/Notion hiện tại trước khi nhận là chức năng đã có.
+
 Đây là ghi chú bền vững giữa các phiên AI, không phải trạng thái hệ thống được tự động đồng bộ. Luôn kiểm tra Git và mã nguồn hiện tại trước khi hành động. Không suy ra rằng tính năng có trên mọi nhánh chỉ vì đã được triển khai ở một nhánh khác.
 
 ## Cách tiếp nối

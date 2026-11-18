@@ -21,6 +21,34 @@ public class BookingsController(QuanLySanBaiContext db, BookingService service) 
     }
 
     [HttpPost]
+    public async Task<IActionResult> HuyCoHoanTien([FromServices] RefundService refunds, OrderActionForm f)
+    {
+        if (!ModelState.IsValid) return BadRequest();
+        if (!await db.DonDatSans.AnyAsync(d => d.Id == f.Id && d.NguoiDungId == AccessService.UserId(User))) return NotFound();
+        await refunds.CancelWithRefund(AccessService.UserId(User), f);
+        TempData["SuccessMessage"] = "Đã hủy đơn và xử lý hoàn tiền theo chính sách.";
+        return RedirectToAction(nameof(Details), new { id = f.Id });
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> DoiLich([FromServices] RescheduleService reschedules, long id, DateOnly? date)
+    {
+        var model = await reschedules.GetRescheduleOptions(AccessService.UserId(User), id, date);
+        return View(model);
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> DoiLich([FromServices] RescheduleService reschedules, RescheduleForm f)
+    {
+        if (!ModelState.IsValid || f.OrderId <= 0 || f.NewCourtId <= 0 || f.NewSlotId <= 0)
+            throw new BusinessException("Thông tin đổi lịch không hợp lệ.");
+
+        await reschedules.ExecuteReschedule(AccessService.UserId(User), f);
+        TempData["SuccessMessage"] = "Đổi lịch đặt sân thành công!";
+        return RedirectToAction(nameof(Details), new { id = f.OrderId });
+    }
+
+    [HttpPost]
     public async Task<IActionResult> Create(BookingForm form)
     {
         if (!ModelState.IsValid)
@@ -55,17 +83,37 @@ public class BookingsController(QuanLySanBaiContext db, BookingService service) 
         }
     }
 
-    public async Task<IActionResult> Index() => View(await db.DonDatSans.AsNoTracking().Where(d => d.NguoiDungId == AccessService.UserId(User)).OrderByDescending(d => d.Id).Take(100).ToListAsync());
+    public async Task<IActionResult> Index() => View(await db.DonDatSans.AsNoTracking().Include(d => d.ChiTietDatSans).ThenInclude(c => c.San).Where(d => d.NguoiDungId == AccessService.UserId(User)).OrderByDescending(d => d.Id).Take(100).ToListAsync());
 
-    public async Task<IActionResult> Details(long id)
+    public async Task<IActionResult> Details([FromServices] RefundService refunds, long id)
     {
+        var userId = AccessService.UserId(User);
         var order = await db.DonDatSans.AsNoTracking()
             .Include(d => d.ChiTietDatSans).ThenInclude(c => c.San)
             .Include(d => d.ChiTietDatSans).ThenInclude(c => c.ChinhSachHuyDoi).ThenInclude(p => p.MucPhiHuyDois)
-            .SingleOrDefaultAsync(d => d.Id == id && d.NguoiDungId == AccessService.UserId(User));
+            .Include(d => d.ThanhToanDons).ThenInclude(p => p.HoanTiens)
+            .SingleOrDefaultAsync(d => d.Id == id && d.NguoiDungId == userId);
         if (order is null) return NotFound();
-        ViewBag.CanCancel = !await db.ThanhToanDons.AnyAsync(p => p.DonDatSanId == id && (p.TrangThai == "THANH_CONG" || p.TrangThai == "DANG_XU_LY"));
-        ViewBag.ServerNow = await service.ServerNow();
+
+        var paid = order.ThanhToanDons.Where(p => p.TrangThai == "THANH_CONG").Sum(p => p.SoTien);
+        var now = await service.ServerNow();
+        var activeSlot = order.ChiTietDatSans.FirstOrDefault(c => c.TrangThaiSlot is not ("DA_DOI" or "DA_HUY"));
+
+        ViewBag.Paid = paid;
+        ViewBag.CanCancel = !order.ThanhToanDons.Any(p => p.TrangThai == "THANH_CONG" || p.TrangThai == "DANG_XU_LY");
+        ViewBag.ServerNow = now;
+        ViewBag.CanPay = order.TrangThai is ("CHO_THANH_TOAN" or "DA_XAC_NHAN" or "DANG_SU_DUNG") && paid < (order.TongTienPhaiTra ?? 0m) && (order.TrangThai != "CHO_THANH_TOAN" || order.ThoiGianHetHanGiuCho > now);
+
+        if (order.TrangThai is ("CHO_THANH_TOAN" or "DA_XAC_NHAN") && activeSlot is not null && VietnamTime.Start(activeSlot.NgaySuDung, activeSlot.GioBatDau) > now)
+        {
+            ViewBag.CancelPreview = await refunds.PreviewCancel(userId, id);
+            ViewBag.CanReschedule = activeSlot.ChinhSachHuyDoi.ChoPhepDoiLich;
+        }
+        else
+        {
+            ViewBag.CanReschedule = false;
+        }
+
         return View(order);
     }
 }

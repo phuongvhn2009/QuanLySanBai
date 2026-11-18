@@ -23,7 +23,7 @@ public class CounterForm
     public long FacilityId { get; set; }
     public long CourtId { get; set; }
     public int SlotId { get; set; }
-    public DateOnly Date { get; set; }=Services.VietnamTime.Today.AddDays(1);
+    public DateOnly Date { get; set; }=Services.VietnamTime.Today;
     [Required,StringLength(100)] public string Name { get; set; }="";
     [Required,RegularExpression(@"^0[0-9]{9}$")] public string Phone { get; set; }="";
 }

@@ -3,26 +3,40 @@
     ViewData["Title"] = $"Đơn đặt {Model.MaDatSan}";
     var now = (DateTime)ViewBag.ServerNow;
     var remaining = Math.Max(0, (int)((Model.ThoiGianHetHanGiuCho ?? now) - now).TotalSeconds);
+    var paid = (decimal)(ViewBag.Paid ?? 0m);
+    var totalDue = Model.TongTienPhaiTra ?? 0m;
+    var canPay = (bool)(ViewBag.CanPay ?? false);
+    var canReschedule = (bool)(ViewBag.CanReschedule ?? false);
+    var cancelPreview = ViewBag.CancelPreview as QuanLySanBai.ViewModels.CancelPreviewVM;
 }
-<div class="mb-3">
+<div class="mb-3 d-flex gap-2 flex-wrap">
     <a asp-action="Index" class="btn btn-outline-secondary">← Đơn của tôi</a>
+    @if (canPay)
+    {
+        <a asp-controller="ThanhToan" asp-action="Index" asp-route-id="@Model.Id" class="btn btn-primary">Thanh toán ngay (VietQR / Ví)</a>
+    }
+    @if (canReschedule)
+    {
+        <a asp-action="DoiLich" asp-route-id="@Model.Id" class="btn btn-outline-primary">Đổi lịch đặt sân</a>
+    }
 </div>
 <h1>Đơn @Model.MaDatSan</h1>
-<p>Trạng thái: <span class="badge @(Model.TrangThai == "CHO_THANH_TOAN" ? "bg-warning text-dark" : Model.TrangThai == "DA_XAC_NHAN" ? "bg-success" : "bg-secondary")">@Model.TrangThai</span></p>
+<p>Trạng thái: <span class="badge @(Model.TrangThai == "CHO_THANH_TOAN" ? "bg-warning text-dark" : Model.TrangThai == "DA_XAC_NHAN" ? "bg-success" : "bg-secondary")">@QuanLySanBai.Services.OrderLabels.Status(Model.TrangThai)</span></p>
 <p>Khách: @Model.TenKhachHang · @Model.SdtKhachHang</p>
-<p>Tổng hiện tại: @Model.TongTienPhaiTra?.ToString("N0") đ · Cọc yêu cầu: @Model.TienCocYeuCau.ToString("N0") đ</p>
+<p>Tổng hiện tại: <strong>@totalDue.ToString("N0") đ</strong> · Cọc yêu cầu: @Model.TienCocYeuCau.ToString("N0") đ · Đã thanh toán: <strong class="text-success">@paid.ToString("N0") đ</strong></p>
+
 @if (Model.TrangThai == "CHO_THANH_TOAN")
 {
     <div class="alert alert-info py-2" role="status">
         Giữ chỗ còn: <strong id="countdown" data-seconds="@remaining"></strong>
     </div>
-    <p class="text-muted small">Hạn giữ chỗ theo giờ Việt Nam: @Model.ThoiGianHetHanGiuCho?.ToString("dd/MM/yyyy HH:mm:ss"). Hết hạn sẽ tự giải phóng. Bạn có thể liên hệ cơ sở để thanh toán tại quầy trước hạn giữ chỗ.</p>
+    <p class="text-muted small">Hạn giữ chỗ theo giờ Việt Nam: @Model.ThoiGianHetHanGiuCho?.ToString("dd/MM/yyyy HH:mm:ss"). Hết hạn sẽ tự giải phóng. Bạn có thể thanh toán trực tuyến bằng VietQR / Ví hoặc tại quầy trước hạn giữ chỗ.</p>
 }
-@foreach (var c in Model.ChiTietDatSans)
+@foreach (var c in Model.ChiTietDatSans.OrderByDescending(x => x.TrangThaiSlot != "DA_DOI"))
 {
-    <div class="card p-3 mb-3">
+    <div class="card p-3 mb-3 @(c.TrangThaiSlot == "DA_DOI" ? "opacity-75 bg-light" : "")">
         <h2 class="h5">@c.San.TenSan · @c.NgaySuDung.ToString("dd/MM/yyyy") · @c.GioBatDau.ToString("HH:mm")–@(c.GioKetThuc == TimeOnly.MinValue ? "24:00" : c.GioKetThuc.ToString("HH:mm"))</h2>
-        <p class="mb-1"><span class="badge bg-secondary">@c.TrangThaiSlot</span> · Giá lưu lúc đặt: @c.GiaThue.ToString("N0") đ</p>
+        <p class="mb-1"><span class="badge @(c.TrangThaiSlot == "DA_DOI" ? "bg-light text-dark border" : "bg-secondary")">@c.TrangThaiSlot</span> · Giá lưu lúc đặt: @c.GiaThue.ToString("N0") đ</p>
         <p class="mb-1 text-muted small">Chính sách lúc đặt: @c.ChinhSachHuyDoi.TenChinhSach</p>
         @foreach (var f in c.ChinhSachHuyDoi.MucPhiHuyDois.OrderBy(f => f.SoGioTuTruocTran))
         {
@@ -30,6 +44,38 @@
         }
     </div>
 }
+
+@if (Model.ThanhToanDons.Any())
+{
+    <div class="card p-3 mb-3">
+        <h2 class="h5">Lịch sử thanh toán</h2>
+        @foreach (var p in Model.ThanhToanDons.OrderByDescending(x => x.Id))
+        {
+            <div class="d-flex justify-content-between align-items-center border-bottom py-2">
+                <div>
+                    <strong>@p.SoTien.ToString("N0") đ</strong> · @p.PhuongThuc · @p.MucDich · <span class="badge bg-success">@p.TrangThai</span>
+                    <div class="small text-muted">@((p.NgayThanhToan ?? p.NgayTao).ToString("dd/MM/yyyy HH:mm")) · Mã @p.MaThanhToan</div>
+                </div>
+                @if (p.TrangThai == "THANH_CONG")
+                {
+                    <a asp-controller="ThanhToan" asp-action="HoaDon" asp-route-id="@p.Id" class="btn btn-sm btn-outline-primary">Xem / In hóa đơn</a>
+                }
+            </div>
+        }
+        @{
+            var refunds = Model.ThanhToanDons.SelectMany(p => p.HoanTiens).OrderByDescending(h => h.Id).ToList();
+        }
+        @if (refunds.Any())
+        {
+            <h3 class="h6 mt-3">Lịch sử hoàn tiền</h3>
+            @foreach (var h in refunds)
+            {
+                <p class="mb-1 small">Mã hoàn: <code>@h.MaHoanTien</code> · Số tiền: <strong>@h.SoTien.ToString("N0") đ</strong> · Phương thức: @h.PhuongThuc · Trạng thái: <span class="badge bg-info text-dark">@h.TrangThai</span></p>
+            }
+        }
+    </div>
+}
+
 @if ((bool)(ViewBag.CanCancel ?? false) && Model.TrangThai is "CHO_THANH_TOAN" or "DA_XAC_NHAN")
 {
     <details class="editor-section mb-3">
@@ -39,6 +85,23 @@
             <input name="Version" value="@Convert.ToBase64String(Model.RowVersion)" type="hidden" />
             <label class="form-label">Lý do <input name="Reason" class="form-control" required maxlength="1000" /></label>
             <button class="btn btn-outline-danger">Hủy đơn</button>
+        </form>
+    </details>
+}
+else if (cancelPreview is not null && Model.TrangThai is "CHO_THANH_TOAN" or "DA_XAC_NHAN")
+{
+    <details class="editor-section mb-3">
+        <summary>Yêu cầu hủy đơn có hoàn tiền (theo chính sách)</summary>
+        <div class="alert alert-warning mt-2 small">
+            <p class="mb-1">Số tiền đã thanh toán: <strong>@cancelPreview.TotalPaid.ToString("N0") đ</strong></p>
+            <p class="mb-1">Còn <strong>@cancelPreview.HoursBeforeStart.ToString("0.##") giờ</strong> trước trận · Phí phạt hủy (@cancelPreview.PenaltyPercent.ToString("0.##")%): <strong class="text-danger">@cancelPreview.PenaltyAmount.ToString("N0") đ</strong></p>
+            <p class="mb-0">Số tiền hoàn lại vào Ví của bạn: <strong class="text-success">@cancelPreview.RefundAmount.ToString("N0") đ</strong></p>
+        </div>
+        <form asp-action="HuyCoHoanTien" method="post" data-confirm="Xác nhận hủy đơn và nhận hoàn tiền vào ví theo chính sách?" class="mt-2">
+            <input name="Id" value="@Model.Id" type="hidden" />
+            <input name="Version" value="@Convert.ToBase64String(Model.RowVersion)" type="hidden" />
+            <label class="form-label">Lý do hủy <input name="Reason" class="form-control" required maxlength="1000" /></label>
+            <button class="btn btn-danger">Xác nhận hủy &amp; hoàn tiền</button>
         </form>
     </details>
 }

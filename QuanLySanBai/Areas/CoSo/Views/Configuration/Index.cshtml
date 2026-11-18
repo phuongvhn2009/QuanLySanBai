@@ -1,19 +1,485 @@
 @model QuanLySanBai.ViewModels.FacilityDashboard
-@{ var c=Model.Facility; ViewData["Title"]="Cấu hình cơ sở"; }
-<h1>@c.TenCoSo</h1><p>@c.DiaChi · @(c.TrangThaiDuyet=="DA_DUYET" ? "Đã duyệt" : c.TrangThaiDuyet=="TU_CHOI" ? "Đã từ chối" : "Chờ duyệt") · @(c.DangHoatDong ? "Hoạt động" : "Ngừng hoạt động")</p>
-<nav class="action-row my-3"><a asp-action="Facility" asp-route-id="@c.Id" class="btn btn-outline-secondary">Thông tin cơ sở</a> <a asp-controller="Members" asp-action="Index" asp-route-coSoId="@c.Id" class="btn btn-outline-secondary">Nhân viên</a></nav>
-<details class="config-section" name="configuration" open><summary>Sân</summary><h2 class="h4">Sân</h2><a class="btn btn-primary my-3" asp-action="Court" asp-route-facilityId="@c.Id">Thêm sân</a>@foreach(var s in Model.Courts) { <p>@s.TenSan · @s.LoaiSan.TenLoai · @(s.DangHoatDong ? "Hoạt động" : "Ngừng") · @(s.DangBaoTri ? "Bảo trì" : "") <a asp-action="Court" asp-route-facilityId="@c.Id" asp-route-id="@s.Id">Sửa / ngừng sân</a></p> }
-</details><details class="config-section" name="configuration"><summary>Lịch tuần</summary><h2 class="h4">Lịch tuần</h2><p>Thứ Hai = 1, Chủ nhật = 7. Ngày chưa cấu hình dùng giờ mặc định @c.GioMoCua–@c.GioDongCua. Kết thúc 00:00 nghĩa là 24:00.</p>
-@foreach(var h in Model.Hours) { <p>Thứ @h.ThuTrongTuan: @(h.NghiCaNgay ? "Nghỉ" : $"{h.GioMoCua}–{h.GioDongCua}")</p> }
-<form asp-action="Hours" method="post" class="border p-3 mb-3"><input name="FacilityId" value="@c.Id" type="hidden" /><label>Thứ <input name="Weekday" type="number" min="1" max="7" value="1" required /></label> <label>Mở <input name="Open" type="time" value="06:00" required /></label> <label>Đóng <input name="Close" type="time" value="22:00" required /></label> <label><input name="Closed" type="checkbox" value="true" /> Nghỉ cả ngày</label> <button class="btn btn-primary">Lưu ngày trong tuần</button></form>
-</details><details class="config-section" name="configuration"><summary>Khung giờ</summary><h2 class="h4">Khung giờ</h2>@foreach(var k in Model.Slots) { <p>#@k.Id: @k.GioBatDau–@k.GioKetThuc</p> }
-<form asp-action="Slot" method="post" class="border p-3 mb-3"><input name="FacilityId" value="@c.Id" type="hidden" /><label>Bắt đầu <input name="Start" type="time" required /></label> <label>Kết thúc <input name="End" type="time" required /></label> <button class="btn btn-primary">Thêm khung</button></form>
-</details><details class="config-section" name="configuration"><summary>Giá và tiền cọc</summary><h2 class="h4">Giá và tiền cọc</h2><p>Giá đã dùng được giữ nguyên. Tắt giá cũ và tạo giá mới để thay đổi.</p>
-@foreach(var p in Model.Prices) { <div class="border p-2 mb-2">@p.San.TenSan · @p.KhungGio.GioBatDau–@p.KhungGio.GioKetThuc · thứ @p.ThuTrongTuan · @p.NgayHieuLucTu–@p.NgayHieuLucDen · @p.GiaThue.ToString("N0") đ · cọc @p.TienCocToiThieu.ToString("N0") đ · @(p.DangApDung ? "Áp dụng" : "Đã tắt") @if(p.DangApDung) { <form asp-action="StopPrice" method="post"><input name="facilityId" value="@c.Id" type="hidden" /><input name="id" value="@p.Id" type="hidden" /><button class="btn btn-outline-danger">Tắt giá</button></form> }</div> }
-<form asp-action="Price" method="post" class="border p-3 mb-3"><input name="FacilityId" value="@c.Id" type="hidden" />
-<label>Sân <select name="CourtId">@foreach(var s in Model.Courts) { <option value="@s.Id">@s.TenSan</option> }</select></label> <label>Khung <select name="SlotId">@foreach(var k in Model.Slots) { <option value="@k.Id">@k.GioBatDau–@k.GioKetThuc</option> }</select></label>
-<label>Thứ <input name="Weekday" type="number" min="1" max="7" value="1" required /></label> <label>Giá <input name="Price" type="number" min="0" step="0.01" required /></label> <label>Cọc <input name="Deposit" type="number" min="0" step="0.01" required /></label> <label>Từ <input name="From" type="date" required /></label> <label>Đến <input name="Until" type="date" /></label> <button class="btn btn-primary">Thêm giá</button></form>
-</details><details class="config-section" name="configuration"><summary>Chính sách hủy/đổi</summary><h2 class="h4">Chính sách hủy/đổi</h2><a class="btn btn-primary my-3" asp-action="Policy" asp-route-facilityId="@c.Id">Thêm chính sách</a>@foreach(var p in Model.Policies) { <div class="border p-3 mb-3"><h3 class="h6">@p.TenChinhSach · @p.NgayHieuLucTu–@p.NgayHieuLucDen</h3>@foreach(var f in p.MucPhiHuyDois.OrderBy(f=>f.SoGioTuTruocTran)) { <p>@f.SoGioTuTruocTran–@(f.SoGioDenTruocTran?.ToString() ?? "∞") giờ trước buổi: hủy @f.TiLePhiHuy%, đổi @f.TiLePhiDoi%</p> }<form asp-action="ClosePolicy" method="post"><input name="facilityId" value="@c.Id" type="hidden" /><input name="id" value="@p.Id" type="hidden" /><label>Đóng hiệu lực đến hết ngày <input name="until" type="date" required /></label><button class="btn btn-secondary">Đóng phiên bản</button></form></div> }
-</details><details class="config-section" name="configuration"><summary>Khóa sân</summary><h2 class="h4">Khóa sân</h2>@foreach(var l in Model.Locks) { <div class="border p-2 mb-2">@l.San.TenSan · @l.BatDauLuc–@l.KetThucLuc · @l.LyDo · @(l.TrangThai=="DANG_AP_DUNG" ? "Đang khóa" : "Đã gỡ khóa") @if(l.TrangThai=="DANG_AP_DUNG") { <form asp-action="CancelLock" method="post"><input name="facilityId" value="@c.Id" type="hidden" /><input name="id" value="@l.Id" type="hidden" /><button class="btn btn-secondary">Gỡ khóa</button></form> }</div> }
-<form asp-action="Lock" method="post" class="border p-3"><input name="FacilityId" value="@c.Id" type="hidden" /><label>Sân <select name="CourtId">@foreach(var s in Model.Courts) { <option value="@s.Id">@s.TenSan</option> }</select></label> <label>Bắt đầu (giờ VN) <input name="Start" type="datetime-local" required /></label> <label>Kết thúc <input name="End" type="datetime-local" required /></label> <label>Lý do <input name="Reason" required maxlength="500" /></label> <button class="btn btn-primary">Khóa sân</button></form>
-</details>
+@using QuanLySanBai.Services
+@{
+    var c = Model.Facility;
+    ViewData["Title"] = Model.IsOwner ? "Cấu hình cơ sở" : "Quản lý bảng giá";
+    var today = VietnamTime.Today.ToString("yyyy-MM-dd");
+    var activeTab = !Model.IsOwner || Model.ReadinessWarnings.Any(w => w.Contains("bảng giá")) ? "prices" : "courts";
+}
+
+<div class="page-heading mb-3">
+    <div>
+        <p class="eyebrow mb-1">QUẢN LÝ CƠ SỞ</p>
+        <h1 class="mb-1">@c.TenCoSo</h1>
+        <p class="text-muted mb-0">
+            @c.DiaChi ·
+            <span class="badge @(c.TrangThaiDuyet == "DA_DUYET" ? "bg-success" : c.TrangThaiDuyet == "TU_CHOI" ? "bg-danger" : "bg-warning text-dark")">
+                @(c.TrangThaiDuyet == "DA_DUYET" ? "Đã duyệt" : c.TrangThaiDuyet == "TU_CHOI" ? "Đã từ chối" : "Chờ duyệt")
+            </span>
+            <span class="badge @(c.DangHoatDong ? "bg-primary" : "bg-secondary")">
+                @(c.DangHoatDong ? "Đang hoạt động" : "Ngừng hoạt động")
+            </span>
+        </p>
+    </div>
+    @if (Model.IsOwner)
+    {
+        <div class="action-row">
+            <a asp-action="Facility" asp-route-id="@c.Id" class="btn btn-outline-secondary">Thông tin cơ sở</a>
+            <a asp-controller="Members" asp-action="Index" asp-route-coSoId="@c.Id" class="btn btn-outline-secondary">Nhân viên</a>
+            <a asp-controller="Orders" asp-action="Index" asp-route-facilityId="@c.Id" class="btn btn-primary">Lịch &amp; Đơn đặt</a>
+        </div>
+    }
+</div>
+
+@if (Model.ReadinessWarnings.Count > 0)
+{
+    <div class="alert alert-warning mb-4">
+        <strong>Lưu ý điều kiện hiển thị đặt sân cho khách hàng:</strong>
+        <ul class="mb-0 mt-1">
+            @foreach (var w in Model.ReadinessWarnings)
+            {
+                <li>@w</li>
+            }
+        </ul>
+    </div>
+}
+
+<ul class="nav nav-pills mb-4 gap-2" id="configTabs" role="tablist">
+    @if (Model.IsOwner)
+    {
+        <li class="nav-item" role="presentation">
+            <button class="nav-link @(activeTab == "courts" ? "active" : "")" id="tab-courts-btn" data-bs-toggle="pill" data-bs-target="#tab-courts" type="button" role="tab">
+                Sân bãi (@Model.Courts.Count)
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="tab-hours-btn" data-bs-toggle="pill" data-bs-target="#tab-hours" type="button" role="tab">
+                Giờ mở cửa &amp; Khung giờ (@Model.Slots.Count)
+            </button>
+        </li>
+    }
+    <li class="nav-item" role="presentation">
+        <button class="nav-link @(activeTab == "prices" ? "active" : "")" id="tab-prices-btn" data-bs-toggle="pill" data-bs-target="#tab-prices" type="button" role="tab">
+            Bảng giá &amp; Tiền cọc (@Model.Prices.Count(p => p.DangApDung))
+        </button>
+    </li>
+    @if (Model.IsOwner)
+    {
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="tab-policies-btn" data-bs-toggle="pill" data-bs-target="#tab-policies" type="button" role="tab">
+                Chính sách hủy/đổi (@Model.Policies.Count)
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="tab-locks-btn" data-bs-toggle="pill" data-bs-target="#tab-locks" type="button" role="tab">
+                Khóa sân (@Model.Locks.Count(l => l.TrangThai == "DANG_AP_DUNG"))
+            </button>
+        </li>
+    }
+</ul>
+
+<div class="tab-content" id="configTabsContent">
+    @if (Model.IsOwner)
+    {
+        <!-- TAB 1: SÂN BÃI -->
+        <div class="tab-pane fade @(activeTab == "courts" ? "show active" : "")" id="tab-courts" role="tabpanel">
+            <div class="card p-4">
+                <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                    <h2 class="h5 mb-0">Danh sách sân</h2>
+                    <a class="btn btn-primary" asp-action="Court" asp-route-facilityId="@c.Id">+ Thêm sân mới</a>
+                </div>
+                @if (Model.Courts.Count == 0)
+                {
+                    <p class="text-muted mb-0">Chưa có sân nào. Hãy bấm "Thêm sân mới" để bắt đầu.</p>
+                }
+                else
+                {
+                    <div class="table-responsive">
+                        <table class="table align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Tên sân</th>
+                                    <th>Loại sân</th>
+                                    <th>Trạng thái</th>
+                                    <th class="text-end">Thao tác</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var s in Model.Courts)
+                                {
+                                    <tr>
+                                        <td><strong>@s.TenSan</strong></td>
+                                        <td>@s.LoaiSan.TenLoai</td>
+                                        <td>
+                                            <span class="badge @(s.DangHoatDong ? "bg-success" : "bg-secondary")">@(s.DangHoatDong ? "Hoạt động" : "Ngừng")</span>
+                                            @if (s.DangBaoTri)
+                                            {
+                                                <span class="badge bg-warning text-dark">Đang bảo trì</span>
+                                            }
+                                        </td>
+                                        <td class="text-end">
+                                            <a class="btn btn-sm btn-outline-primary" asp-action="Court" asp-route-facilityId="@c.Id" asp-route-id="@s.Id">Sửa / Bảo trì</a>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <!-- TAB 2: GIỜ MỞ CỬA & KHUNG GIỜ -->
+        <div class="tab-pane fade" id="tab-hours" role="tabpanel">
+            <div class="row g-4">
+                <div class="col-lg-6">
+                    <div class="card p-4 h-100">
+                        <h2 class="h5 mb-2">Giờ mở cửa theo thứ</h2>
+                        <p class="text-muted small mb-3">Mặc định cơ sở: <strong>@c.GioMoCua–@(c.GioDongCua == TimeOnly.MinValue ? "24:00" : c.GioDongCua.ToString())</strong> (00:00 là 24:00).</p>
+                        @if (Model.Hours.Count > 0)
+                        {
+                            <table class="table table-sm mb-3">
+                                <tbody>
+                                    @foreach (var h in Model.Hours)
+                                    {
+                                        <tr>
+                                            <td><strong>@FacilityService.WeekdayName(h.ThuTrongTuan)</strong></td>
+                                            <td>@(h.NghiCaNgay ? "Nghỉ cả ngày" : $"{h.GioMoCua} – {(h.GioDongCua == TimeOnly.MinValue ? "24:00" : h.GioDongCua.ToString())}")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        }
+                        <form asp-action="Hours" method="post" class="border rounded p-3 bg-light">
+                            <input name="FacilityId" value="@c.Id" type="hidden" />
+                            <div class="row g-2 align-items-end">
+                                <div class="col-sm-4">
+                                    <label class="form-label small mb-1">Thứ</label>
+                                    <select name="Weekday" class="form-select" required>
+                                        @for (int d = 1; d <= 7; d++)
+                                        {
+                                            <option value="@d">@FacilityService.WeekdayName(d)</option>
+                                        }
+                                    </select>
+                                </div>
+                                <div class="col-sm-4">
+                                    <label class="form-label small mb-1">Mở cửa</label>
+                                    <input name="Open" type="time" value="06:00" class="form-control" required />
+                                </div>
+                                <div class="col-sm-4">
+                                    <label class="form-label small mb-1">Đóng cửa</label>
+                                    <input name="Close" type="time" value="22:00" class="form-control" required />
+                                </div>
+                                <div class="col-12 mt-2">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="Closed" value="true" id="closedDayCb" />
+                                        <label class="form-check-label" for="closedDayCb">Nghỉ cả ngày</label>
+                                    </div>
+                                </div>
+                                <div class="col-12 mt-2">
+                                    <button class="btn btn-primary btn-sm">Lưu giờ hoạt động</button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="col-lg-6">
+                    <div class="card p-4 h-100">
+                        <h2 class="h5 mb-3">Khung giờ cho thuê mặc định</h2>
+                        <div class="d-flex flex-wrap gap-2 mb-4">
+                            @if (Model.Slots.Count == 0)
+                            {
+                                <span class="text-muted">Chưa có khung giờ nào.</span>
+                            }
+                            @foreach (var k in Model.Slots)
+                            {
+                                <span class="badge bg-light text-dark border px-3 py-2 fs-6">
+                                    @k.GioBatDau.ToString("HH:mm") – @(k.GioKetThuc == TimeOnly.MinValue ? "24:00" : k.GioKetThuc.ToString("HH:mm"))
+                                </span>
+                            }
+                        </div>
+                        <form asp-action="Slot" method="post" class="border rounded p-3 bg-light mt-auto">
+                            <input name="FacilityId" value="@c.Id" type="hidden" />
+                            <div class="row g-2 align-items-end">
+                                <div class="col-sm-5">
+                                    <label class="form-label small mb-1">Giờ bắt đầu</label>
+                                    <input name="Start" type="time" class="form-control" required />
+                                </div>
+                                <div class="col-sm-5">
+                                    <label class="form-label small mb-1">Giờ kết thúc (00:00 = 24:00)</label>
+                                    <input name="End" type="time" class="form-control" required />
+                                </div>
+                                <div class="col-sm-2">
+                                    <button class="btn btn-primary w-100">+ Thêm</button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- TAB 3: BẢNG GIÁ & TIỀN CỌC -->
+    <div class="tab-pane fade @(activeTab == "prices" ? "show active" : "")" id="tab-prices" role="tabpanel">
+        <div class="card p-4 mb-4">
+            <h2 class="h5 mb-3">Thiết lập bảng giá mới</h2>
+            <form asp-action="Price" method="post">
+                <input name="FacilityId" value="@c.Id" type="hidden" />
+                <div class="row g-3 mb-3">
+                    <div class="col-md-4">
+                        <label class="form-label fw-semibold">Sân</label>
+                        <select name="CourtId" class="form-select">
+                            @foreach (var s in Model.Courts)
+                            {
+                                <option value="@s.Id">@s.TenSan</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-semibold">Khung giờ</label>
+                        <select name="SlotId" class="form-select">
+                            @foreach (var k in Model.Slots)
+                            {
+                                <option value="@k.Id">@k.GioBatDau.ToString("HH:mm") – @(k.GioKetThuc == TimeOnly.MinValue ? "24:00" : k.GioKetThuc.ToString("HH:mm"))</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label fw-semibold">Giá thuê (đ)</label>
+                        <input name="Price" type="number" min="0" step="1000" class="form-control" placeholder="100000" required />
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label fw-semibold">Cọc tối thiểu (đ)</label>
+                        <input name="Deposit" type="number" min="0" step="1000" value="0" class="form-control" required />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-semibold">Hiệu lực từ ngày</label>
+                        <input name="From" type="date" value="@today" class="form-control" required />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-semibold">Đến ngày (trống = vô thời hạn)</label>
+                        <input name="Until" type="date" class="form-control" />
+                    </div>
+                    <div class="col-md-6 d-flex align-items-end">
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" name="ReplaceExisting" value="true" id="replaceOldCb" checked />
+                            <label class="form-check-label" for="replaceOldCb">Tự động tắt bảng giá cũ nếu trùng khoảng ngày hiệu lực</label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="p-3 bg-light rounded border mb-3">
+                    <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+                        <strong class="me-2">Áp dụng cho các thứ:</strong>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setWeekdays([1,2,3,4,5,6,7])">Cả tuần (T2–CN)</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setWeekdays([1,2,3,4,5])">Ngày thường (T2–T6)</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setWeekdays([6,7])">Cuối tuần (T7–CN)</button>
+                    </div>
+                    <div class="d-flex flex-wrap gap-3">
+                        @for (int d = 1; d <= 7; d++)
+                        {
+                            <div class="form-check">
+                                <input class="form-check-input weekday-cb" type="checkbox" name="Weekdays" value="@d" id="wd_@d" checked />
+                                <label class="form-check-label" for="wd_@d">@FacilityService.WeekdayName(d)</label>
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                <button class="btn btn-primary">Lưu bảng giá</button>
+            </form>
+        </div>
+
+        <div class="card p-4">
+            <h2 class="h5 mb-3">Danh sách bảng giá hiện tại</h2>
+            @if (Model.Prices.Count == 0)
+            {
+                <p class="text-muted mb-0">Chưa có bảng giá nào.</p>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Sân</th>
+                                <th>Khung giờ</th>
+                                <th>Thứ</th>
+                                <th>Hiệu lực</th>
+                                <th class="text-end">Giá thuê</th>
+                                <th class="text-end">Cọc tối thiểu</th>
+                                <th>Trạng thái</th>
+                                <th class="text-end">Thao tác</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var p in Model.Prices.OrderByDescending(x => x.DangApDung).ThenBy(x => x.San.TenSan).ThenBy(x => x.KhungGio.GioBatDau).ThenBy(x => x.ThuTrongTuan))
+                            {
+                                <tr class="@(p.DangApDung ? "" : "opacity-50")">
+                                    <td><strong>@p.San.TenSan</strong></td>
+                                    <td>@p.KhungGio.GioBatDau.ToString("HH:mm")–@(p.KhungGio.GioKetThuc == TimeOnly.MinValue ? "24:00" : p.KhungGio.GioKetThuc.ToString("HH:mm"))</td>
+                                    <td><span class="badge bg-light text-dark border">@FacilityService.WeekdayName(p.ThuTrongTuan)</span></td>
+                                    <td class="small">@p.NgayHieuLucTu.ToString("dd/MM/yyyy") – @(p.NgayHieuLucDen?.ToString("dd/MM/yyyy") ?? "Vô thời hạn")</td>
+                                    <td class="text-end fw-bold text-primary">@p.GiaThue.ToString("N0") đ</td>
+                                    <td class="text-end">@p.TienCocToiThieu.ToString("N0") đ</td>
+                                    <td><span class="badge @(p.DangApDung ? "bg-success" : "bg-secondary")">@(p.DangApDung ? "Áp dụng" : "Đã tắt")</span></td>
+                                    <td class="text-end">
+                                        @if (p.DangApDung)
+                                        {
+                                            <form asp-action="StopPrice" method="post" class="m-0">
+                                                <input name="facilityId" value="@c.Id" type="hidden" />
+                                                <input name="id" value="@p.Id" type="hidden" />
+                                                <button class="btn btn-sm btn-outline-danger">Tắt giá</button>
+                                            </form>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+
+    @if (Model.IsOwner)
+    {
+        <!-- TAB 4: CHÍNH SÁCH HỦY/ĐỔI -->
+        <div class="tab-pane fade" id="tab-policies" role="tabpanel">
+            <div class="card p-4">
+                <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                    <h2 class="h5 mb-0">Chính sách hủy &amp; đổi lịch</h2>
+                    <a class="btn btn-primary" asp-action="Policy" asp-route-facilityId="@c.Id">+ Thêm chính sách mới</a>
+                </div>
+                @if (Model.Policies.Count == 0)
+                {
+                    <p class="text-muted mb-0">Chưa có chính sách nào. Khách hàng cần có chính sách hiệu lực mới đặt được sân.</p>
+                }
+                else
+                {
+                    <div class="row g-3">
+                        @foreach (var p in Model.Policies)
+                        {
+                            <div class="col-md-6">
+                                <div class="border rounded p-3 h-100">
+                                    <h3 class="h6 mb-1">@p.TenChinhSach</h3>
+                                    <p class="small text-muted mb-2">Hiệu lực: @p.NgayHieuLucTu.ToString("dd/MM/yyyy") – @(p.NgayHieuLucDen?.ToString("dd/MM/yyyy") ?? "Vô thời hạn") · @(p.ChoPhepDoiLich ? "Cho phép đổi lịch" : "Không cho đổi lịch")</p>
+                                    <ul class="small mb-3">
+                                        @foreach (var f in p.MucPhiHuyDois.OrderBy(f => f.SoGioTuTruocTran))
+                                        {
+                                            <li>@f.SoGioTuTruocTran–@(f.SoGioDenTruocTran?.ToString() ?? "∞") giờ trước buổi: Phí hủy <strong>@f.TiLePhiHuy%</strong>, Phí đổi <strong>@f.TiLePhiDoi%</strong></li>
+                                        }
+                                    </ul>
+                                    <form asp-action="ClosePolicy" method="post" class="d-flex gap-2 align-items-end">
+                                        <input name="facilityId" value="@c.Id" type="hidden" />
+                                        <input name="id" value="@p.Id" type="hidden" />
+                                        <label class="small mb-0 flex-grow-1">Đóng hiệu lực hết ngày
+                                            <input name="until" type="date" class="form-control form-control-sm" required />
+                                        </label>
+                                        <button class="btn btn-sm btn-secondary">Đóng</button>
+                                    </form>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+
+        <!-- TAB 5: KHÓA SÂN -->
+        <div class="tab-pane fade" id="tab-locks" role="tabpanel">
+            <div class="card p-4 mb-4">
+                <h2 class="h5 mb-3">Khóa sân đột xuất / Bảo trì</h2>
+                <form asp-action="Lock" method="post" class="row g-2 align-items-end">
+                    <input name="FacilityId" value="@c.Id" type="hidden" />
+                    <div class="col-md-3">
+                        <label class="form-label small mb-1">Sân</label>
+                        <select name="CourtId" class="form-select">
+                            @foreach (var s in Model.Courts)
+                            {
+                                <option value="@s.Id">@s.TenSan</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small mb-1">Bắt đầu (giờ VN)</label>
+                        <input name="Start" type="datetime-local" class="form-control" required />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small mb-1">Kết thúc (giờ VN)</label>
+                        <input name="End" type="datetime-local" class="form-control" required />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small mb-1">Lý do</label>
+                        <input name="Reason" class="form-control" required maxlength="500" />
+                    </div>
+                    <div class="col-12 mt-2">
+                        <button class="btn btn-primary">Khóa sân</button>
+                    </div>
+                </form>
+            </div>
+
+            <div class="card p-4">
+                <h2 class="h5 mb-3">Lịch sử khóa sân</h2>
+                @if (Model.Locks.Count == 0)
+                {
+                    <p class="text-muted mb-0">Chưa có lịch khóa sân nào.</p>
+                }
+                else
+                {
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead class="table-light">
+                                <tr><th>Sân</th><th>Từ</th><th>Đến</th><th>Lý do</th><th>Trạng thái</th><th></th></tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var l in Model.Locks.OrderByDescending(x => x.Id))
+                                {
+                                    <tr>
+                                        <td><strong>@l.San.TenSan</strong></td>
+                                        <td class="small">@l.BatDauLuc.ToString("dd/MM/yyyy HH:mm")</td>
+                                        <td class="small">@l.KetThucLuc.ToString("dd/MM/yyyy HH:mm")</td>
+                                        <td>@l.LyDo</td>
+                                        <td><span class="badge @(l.TrangThai == "DANG_AP_DUNG" ? "bg-warning text-dark" : "bg-secondary")">@(l.TrangThai == "DANG_AP_DUNG" ? "Đang khóa" : "Đã gỡ")</span></td>
+                                        <td class="text-end">
+                                            @if (l.TrangThai == "DANG_AP_DUNG")
+                                            {
+                                                <form asp-action="CancelLock" method="post" class="m-0">
+                                                    <input name="facilityId" value="@c.Id" type="hidden" />
+                                                    <input name="id" value="@l.Id" type="hidden" />
+                                                    <button class="btn btn-sm btn-secondary">Gỡ khóa</button>
+                                                </form>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@section Scripts {
+    <script>
+        function setWeekdays(days) {
+            document.querySelectorAll('.weekday-cb').forEach(cb => {
+                cb.checked = days.includes(Number(cb.value));
+            });
+        }
+        (function () {
+            const key = 'qlsb_cfg_tab_@c.Id';
+            document.querySelectorAll('#configTabs button[data-bs-toggle="pill"]').forEach(btn => {
+                btn.addEventListener('shown.bs.tab', e => localStorage.setItem(key, e.target.id));
+            });
+            const saved = localStorage.getItem(key);
+            if (saved && document.getElementById(saved)) {
+                new bootstrap.Tab(document.getElementById(saved)).show();
+            }
+        })();
+    </script>
+}

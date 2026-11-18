@@ -1,0 +1,178 @@
+@model QuanLySanBai.ViewModels.TaoThanhToanVM
+@{
+    ViewData["Title"] = $"Thanh toán đơn {Model.MaDatSan}";
+    var remaining = Model.ConPhaiThu;
+    var defaultPurpose = Model.TrangThaiDon == "CHO_THANH_TOAN" && Model.TienCocYeuCau > Model.DaThanhToan ? "COC" : (Model.DaThanhToan > 0 ? "BO_SUNG" : "THANH_TOAN");
+    var depositNeeded = Math.Max(0m, Model.TienCocYeuCau - Model.DaThanhToan);
+}
+
+<div class="mb-3">
+    @if (Model.IsStaff)
+    {
+        <a asp-area="CoSo" asp-controller="Orders" asp-action="Details" asp-route-id="@Model.OrderId" class="btn btn-outline-secondary">← Chi tiết đơn (Quầy)</a>
+    }
+    else
+    {
+        <a asp-controller="Bookings" asp-action="Details" asp-route-id="@Model.OrderId" class="btn btn-outline-secondary">← Chi tiết đơn đặt</a>
+    }
+</div>
+
+<h1>Thanh toán đơn @Model.MaDatSan</h1>
+
+<div class="card p-3 mb-4">
+    <h2 class="h5 mb-2">@Model.TenCoSo — @Model.TenSan</h2>
+    <p class="mb-1">Ngày sử dụng: <strong>@Model.NgaySuDung.ToString("dd/MM/yyyy")</strong> · Khung giờ: <strong>@Model.GioBatDau.ToString("HH:mm")–@(Model.GioKetThuc == TimeOnly.MinValue ? "24:00" : Model.GioKetThuc.ToString("HH:mm"))</strong></p>
+    <p class="mb-1">Trạng thái đơn: <span class="badge bg-info text-dark">@QuanLySanBai.Services.OrderLabels.Status(Model.TrangThaiDon)</span></p>
+    <hr />
+    <div class="row">
+        <div class="col-md-6">
+            <p class="mb-1">Tổng tiền sân: <strong>@Model.TongTienSan.ToString("N0") đ</strong></p>
+            <p class="mb-1">Phí phát sinh / đổi lịch: <strong>@Model.TongPhiPhat.ToString("N0") đ</strong></p>
+            <p class="mb-1">Giảm giá: <strong>-@Model.TienGiamGia.ToString("N0") đ</strong></p>
+        </div>
+        <div class="col-md-6">
+            <p class="mb-1">Thành tiền phải trả: <strong class="text-primary fs-5">@Model.TongTienPhaiTra.ToString("N0") đ</strong></p>
+            <p class="mb-1">Cọc tối thiểu: <strong>@Model.TienCocYeuCau.ToString("N0") đ</strong> · Đã thu: <strong>@Model.DaThanhToan.ToString("N0") đ</strong></p>
+            <p class="mb-0">Còn phải thanh toán: <strong class="text-danger fs-5">@remaining.ToString("N0") đ</strong></p>
+        </div>
+    </div>
+</div>
+
+@if (remaining <= 0)
+{
+    <div class="alert alert-success">Đơn này đã được thanh toán đủ.</div>
+}
+else if (Model.TrangThaiDon == "CHO_THANH_TOAN" && Model.ThoiGianHetHanGiuCho.HasValue && Model.ThoiGianHetHanGiuCho.Value <= QuanLySanBai.Services.VietnamTime.Now)
+{
+    <div class="alert alert-danger">Đơn này đã quá hạn giữ chỗ. Vui lòng quay lại lịch sân để đặt lại.</div>
+}
+else
+{
+    <div class="row g-3">
+        <!-- Chuyển khoản MB Bank qua VietQR + SePay -->
+        <div class="col-md-6">
+            <div class="card p-4 h-100">
+                <h2 class="h5">1. Chuyển khoản MB Bank (VietQR + SePay)</h2>
+                <p class="text-muted small">Hệ thống tạo mã QR động kèm nội dung thanh toán riêng. Đơn sẽ tự động xác nhận ngay khi SePay ghi nhận giao dịch.</p>
+                @if (!Model.SePayConfigured)
+                {
+                    <div class="alert alert-warning py-2 small">Lưu ý: Chưa cấu hình số tài khoản MB Bank nhận tiền trong cấu hình hệ thống (SePay:AccountNumber).</div>
+                }
+                <form asp-action="TaoQr" method="post" class="mt-auto">
+                    <input type="hidden" name="OrderId" value="@Model.OrderId" />
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Chọn khoản thanh toán</label>
+                        <select name="Purpose" class="form-select">
+                            @if (depositNeeded > 0 && depositNeeded < remaining)
+                            {
+                                <option value="COC" selected="@(defaultPurpose == "COC")">Đóng tiền cọc (@depositNeeded.ToString("N0") đ)</option>
+                            }
+                            <option value="@(Model.DaThanhToan > 0 ? "BO_SUNG" : "THANH_TOAN")" selected="@(defaultPurpose != "COC")">Thanh toán toàn bộ phần còn lại (@remaining.ToString("N0") đ)</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Tạo mã VietQR thanh toán</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Thanh toán bằng Ví điện tử (nếu là chủ đơn) -->
+        @if (Model.SoDuViKhaDung > 0 || !Model.IsStaff)
+        {
+            <div class="col-md-6">
+                <div class="card p-4 h-100">
+                    <h2 class="h5">2. Thanh toán bằng Ví điện tử</h2>
+                    <p class="mb-2">Số dư ví khả dụng: <strong class="text-success">@Model.SoDuViKhaDung.ToString("N0") đ</strong></p>
+                    <p class="text-muted small">Trừ trực tiếp từ số dư ví của bạn và xác nhận đơn ngay lập tức.</p>
+                    <form asp-action="ThanhToanVi" method="post" class="mt-auto" data-confirm="Xác nhận trừ tiền từ ví để thanh toán đơn này?">
+                        <input type="hidden" name="OrderId" value="@Model.OrderId" />
+                        <input type="hidden" name="Version" value="@Model.Version" />
+                        <input type="hidden" name="Key" value="@Guid.NewGuid().ToString("N")" />
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Chọn khoản thanh toán</label>
+                            <select name="Purpose" class="form-select">
+                                @if (depositNeeded > 0 && depositNeeded < remaining)
+                                {
+                                    <option value="COC">Đóng tiền cọc (@depositNeeded.ToString("N0") đ)</option>
+                                }
+                                <option value="@(Model.DaThanhToan > 0 ? "BO_SUNG" : "THANH_TOAN")">Thanh toán toàn bộ còn lại (@remaining.ToString("N0") đ)</option>
+                            </select>
+                        </div>
+                        <button type="submit" class="btn btn-success w-100 mb-2">Thanh toán bằng Ví</button>
+                    </form>
+                    <a asp-controller="Wallet" asp-action="Index" class="btn btn-outline-secondary btn-sm w-100">Nạp thêm tiền vào ví</a>
+                </div>
+            </div>
+        }
+
+        <!-- Thanh toán tiền mặt tại quầy (chỉ nhân viên có quyền THU_TIEN) -->
+        @if (Model.CanCollectCash)
+        {
+            <div class="col-12">
+                <div class="card p-4 border-primary">
+                    <h2 class="h5">3. Thu tiền mặt tại quầy (Dành cho nhân viên)</h2>
+                    <form asp-action="TienMat" method="post" id="cashForm" data-confirm="Xác nhận đã nhận đủ tiền mặt từ khách hàng?">
+                        <input type="hidden" name="OrderId" value="@Model.OrderId" />
+                        <input type="hidden" name="Version" value="@Model.Version" />
+                        <input type="hidden" name="Key" value="@Guid.NewGuid().ToString("N")" />
+                        <div class="row g-3 align-items-end">
+                            <div class="col-md-3">
+                                <label class="form-label">Mục đích thu</label>
+                                <select name="Purpose" class="form-select">
+                                    @if (depositNeeded > 0)
+                                    {
+                                        <option value="COC">Thu cọc</option>
+                                    }
+                                    <option value="THANH_TOAN" selected="@(depositNeeded == 0)">Thanh toán</option>
+                                    <option value="BO_SUNG">Thu bổ sung</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Số tiền cần thu (đ)</label>
+                                <input type="number" step="0.01" min="0.01" max="@remaining.ToString(System.Globalization.CultureInfo.InvariantCulture)" name="Amount" id="cashAmount" value="@remaining.ToString(System.Globalization.CultureInfo.InvariantCulture)" class="form-control" required />
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Tiền khách đưa (đ)</label>
+                                <input type="number" step="0.01" min="0.01" name="CashReceived" id="cashReceived" value="@remaining.ToString(System.Globalization.CultureInfo.InvariantCulture)" class="form-control" required />
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Tiền thừa trả khách</label>
+                                <div class="form-control bg-light fw-bold text-success" id="cashChangeDisplay">0 đ</div>
+                            </div>
+                        </div>
+                        <div class="mt-3">
+                            <button type="submit" class="btn btn-primary" id="cashSubmitBtn">Xác nhận thu tiền mặt &amp; In hóa đơn</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@section Scripts {
+    <script>
+        const amountEl = document.getElementById('cashAmount');
+        const receivedEl = document.getElementById('cashReceived');
+        const changeEl = document.getElementById('cashChangeDisplay');
+        const submitBtn = document.getElementById('cashSubmitBtn');
+
+        function updateChange() {
+            if (!amountEl || !receivedEl || !changeEl) return;
+            const amt = parseFloat(amountEl.value) || 0;
+            const rec = parseFloat(receivedEl.value) || 0;
+            const diff = rec - amt;
+            if (diff < 0) {
+                changeEl.textContent = 'Chưa đủ (' + diff.toLocaleString('vi-VN') + ' đ)';
+                changeEl.className = 'form-control bg-light fw-bold text-danger';
+                if (submitBtn) submitBtn.disabled = true;
+            } else {
+                changeEl.textContent = diff.toLocaleString('vi-VN') + ' đ';
+                changeEl.className = 'form-control bg-light fw-bold text-success';
+                if (submitBtn) submitBtn.disabled = false;
+            }
+        }
+        amountEl?.addEventListener('input', updateChange);
+        receivedEl?.addEventListener('input', updateChange);
+        updateChange();
+    </script>
+}
