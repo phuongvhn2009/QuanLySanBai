@@ -17,6 +17,7 @@ builder.Services.AddDbContext<QuanLySanBaiContext>(o => o.UseSqlServer(builder.C
 builder.Services.AddScoped<IPasswordHasher<NguoiDung>, PasswordHasher<NguoiDung>>();
 builder.Services.AddScoped<AccessService>();
 builder.Services.AddScoped<FacilityService>();
+builder.Services.AddScoped<CourtImageService>();
 builder.Services.AddScoped<DevelopmentSeeder>();
 builder.Services.AddScoped<BookingService>();
 builder.Services.AddSingleton(TimeProvider.System);
@@ -29,6 +30,7 @@ builder.Services.AddScoped<WebhookService>();
 builder.Services.AddScoped<RefundService>();
 builder.Services.AddScoped<RescheduleService>();
 builder.Services.AddOptions<QuanLySanBai.ViewModels.SePayOptions>().BindConfiguration("SePay");
+builder.Services.AddOptions<CourtImageOptions>().BindConfiguration("CourtImages").Validate(o => o.MaxFileSizeBytes is >= 102400 and <= 20_971_520 && o.MaxImagesPerCourt is >= 1 and <= 30, "Invalid CourtImages options").ValidateOnStart();
 builder.Services.AddOptions<QuanLySanBai.ViewModels.OperationOptions>().BindConfiguration("Operations").Validate(o=>o.CheckInEarlyMinutes is >=0 and <=120).ValidateOnStart();
 builder.Services.AddOptions<QuanLySanBai.ViewModels.BookingOptions>().BindConfiguration("Booking").Validate(o=>o.HoldMinutes is >=1 and <=60 && o.ExpiryIntervalSeconds is >=5 and <=300,"Invalid booking options").ValidateOnStart();
 builder.Services.AddHostedService<HoldExpiryWorker>();
@@ -104,6 +106,20 @@ app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapHub<UpdatesHub>("/updates", options => options.CloseOnAuthenticationExpiration = true);
+
+var uploadsRoot = Path.Combine(app.Environment.WebRootPath, "uploads");
+Directory.CreateDirectory(uploadsRoot);
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(uploadsRoot),
+    RequestPath = "/uploads",
+    ServeUnknownFileTypes = false,
+    OnPrepareResponse = ctx =>
+    {
+        ctx.Context.Response.Headers.TryAdd("X-Content-Type-Options", "nosniff");
+        ctx.Context.Response.Headers.TryAdd("Cache-Control", "public,max-age=604800");
+    }
+});
 
 app.MapStaticAssets();
 

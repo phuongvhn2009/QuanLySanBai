@@ -7,7 +7,7 @@ using QuanLySanBai.ViewModels;
 namespace QuanLySanBai.Areas.CoSo.Controllers;
 
 [Area("CoSo"), Authorize]
-public class ConfigurationController(QuanLySanBaiContext db, FacilityService service) : Controller
+public class ConfigurationController(QuanLySanBaiContext db, FacilityService service, CourtImageService courtImages) : Controller
 {
     private long Actor => AccessService.UserId(User);
     private IActionResult Done(long id) { TempData["SuccessMessage"] = "Đã lưu cấu hình."; return RedirectToAction(nameof(Index), new { id }); }
@@ -23,12 +23,75 @@ public class ConfigurationController(QuanLySanBaiContext db, FacilityService ser
     [HttpGet] public async Task<IActionResult> Court(long facilityId, long id=0)
     {
         await service.Owned(Actor,facilityId);
-        ViewBag.Types=await db.LoaiSans.Include(t=>t.MonTheThao).Where(t=>t.MonTheThao.TrangThai).ToListAsync();
-        if(id==0) return View(new CourtForm { FacilityId=facilityId });
-        var s=await db.Sans.SingleOrDefaultAsync(s=>s.Id==id && s.CoSoId==facilityId) ?? throw new FacilityAccessException();
+        var types = await db.LoaiSans.Include(t=>t.MonTheThao).Where(t=>t.MonTheThao.TrangThai).ToListAsync();
+        ViewBag.Types = types;
+        ViewBag.MaxImages = courtImages.Options.MaxImagesPerCourt;
+        ViewBag.MaxFileSizeMb = Math.Round(courtImages.Options.MaxFileSizeBytes / (1024d * 1024d), 1);
+        if(id==0)
+        {
+            ViewBag.CourtImages = new List<QuanLySanBai.Models.Entities.HinhAnhSan>();
+            ViewBag.DefaultTypeImage = CourtImageResolver.ForCourtType(types.FirstOrDefault());
+            return View(new CourtForm { FacilityId=facilityId });
+        }
+        var s=await db.Sans.Include(x=>x.LoaiSan).ThenInclude(t=>t.MonTheThao).SingleOrDefaultAsync(s=>s.Id==id && s.CoSoId==facilityId) ?? throw new FacilityAccessException();
+        ViewBag.CourtImages = await courtImages.ListForOwnerAsync(Actor, facilityId, id);
+        ViewBag.DefaultTypeImage = CourtImageResolver.ForCourtType(s.LoaiSan, s.LoaiSan.MonTheThao);
         return View(new CourtForm { Id=id, FacilityId=facilityId, Name=s.TenSan, TypeId=s.LoaiSanId, Active=s.DangHoatDong, Maintenance=s.DangBaoTri });
     }
     [HttpPost] public async Task<IActionResult> Court(CourtForm model) { if(!ModelState.IsValid) return Invalid(); await service.SaveCourt(Actor,model); return Done(model.FacilityId); }
+    [HttpPost, RequestSizeLimit(55_000_000)]
+    public async Task<IActionResult> UploadCourtImages(long facilityId, long courtId, List<IFormFile> files)
+    {
+        bool isAjax = string.Equals(Request.Headers["X-Requested-With"], "XMLHttpRequest", StringComparison.OrdinalIgnoreCase);
+        try
+        {
+            var created = await courtImages.UploadManyAsync(Actor, facilityId, courtId, files, HttpContext.RequestAborted);
+            var msg = $"Đã tải lên thành công {created.Count} ảnh cho sân.";
+            if (isAjax) return Json(new { ok = true, count = created.Count, message = msg });
+            TempData["SuccessMessage"] = msg;
+        }
+        catch (BusinessException ex)
+        {
+            if (isAjax) return BadRequest(new { ok = false, message = ex.Message });
+            TempData["ErrorMessage"] = ex.Message;
+        }
+        return RedirectToAction(nameof(Court), new { facilityId, id = courtId });
+    }
+    [HttpPost]
+    public async Task<IActionResult> SetPrimaryCourtImage(long facilityId, long courtId, long imageId)
+    {
+        await courtImages.SetPrimaryAsync(Actor, facilityId, courtId, imageId);
+        TempData["SuccessMessage"] = "Đã cập nhật ảnh đại diện cho sân.";
+        return RedirectToAction(nameof(Court), new { facilityId, id = courtId });
+    }
+    [HttpPost]
+    public async Task<IActionResult> MoveCourtImage(long facilityId, long courtId, long imageId, int direction)
+    {
+        await courtImages.MoveOrderAsync(Actor, facilityId, courtId, imageId, direction);
+        TempData["SuccessMessage"] = "Đã cập nhật thứ tự hiển thị ảnh.";
+        return RedirectToAction(nameof(Court), new { facilityId, id = courtId });
+    }
+    [HttpPost, RequestSizeLimit(10_000_000)]
+    public async Task<IActionResult> ReplaceCourtImage(long facilityId, long courtId, long imageId, IFormFile file)
+    {
+        try
+        {
+            await courtImages.ReplaceAsync(Actor, facilityId, courtId, imageId, file, HttpContext.RequestAborted);
+            TempData["SuccessMessage"] = "Đã thay ảnh mới thành công.";
+        }
+        catch (BusinessException ex)
+        {
+            TempData["ErrorMessage"] = ex.Message;
+        }
+        return RedirectToAction(nameof(Court), new { facilityId, id = courtId });
+    }
+    [HttpPost]
+    public async Task<IActionResult> DeleteCourtImage(long facilityId, long courtId, long imageId)
+    {
+        await courtImages.DeleteAsync(Actor, facilityId, courtId, imageId);
+        TempData["SuccessMessage"] = "Đã xóa ảnh khỏi thư viện sân.";
+        return RedirectToAction(nameof(Court), new { facilityId, id = courtId });
+    }
     [HttpPost] public async Task<IActionResult> Hours(HoursForm model) { if(!ModelState.IsValid) return Invalid(); await service.SaveHours(Actor,model); return Done(model.FacilityId); }
     [HttpPost] public async Task<IActionResult> Slot(SlotForm model) { if(!ModelState.IsValid) return Invalid(); await service.AddSlot(Actor,model); return Done(model.FacilityId); }
     [HttpPost] public async Task<IActionResult> Price(PriceForm model) { if(!ModelState.IsValid) return Invalid(); await service.AddPrice(Actor,model); return Done(model.FacilityId); }

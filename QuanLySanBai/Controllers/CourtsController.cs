@@ -5,10 +5,14 @@ using QuanLySanBai.Services;
 namespace QuanLySanBai.Controllers;
 public class CourtsController(QuanLySanBaiContext db, BookingService service) : Controller
 {
-    public async Task<IActionResult> Index(int? sportId,string? area,DateOnly? date,int page=1)
+    public async Task<IActionResult> Index(int? sportId,string? area,DateOnly? date,long? selectedCourtId=null,int page=1)
     {
         if(!ModelState.IsValid || page<1 || page>10000) return BadRequest();
-        var query=service.PublicCourts.Include(s=>s.CoSo).Include(s=>s.LoaiSan).ThenInclude(t=>t.MonTheThao).AsQueryable();
+        var query=service.PublicCourts
+            .Include(s=>s.CoSo)
+            .Include(s=>s.LoaiSan).ThenInclude(t=>t.MonTheThao)
+            .Include(s=>s.HinhAnhSans)
+            .AsQueryable();
         if(sportId.HasValue) query=query.Where(s=>s.LoaiSan.MonTheThaoId==sportId);
         if(!string.IsNullOrWhiteSpace(area)) query=query.Where(s=>s.CoSo.DiaChi.Contains(area));
         List<Models.Entities.San> courts;
@@ -21,7 +25,29 @@ public class CourtsController(QuanLySanBaiContext db, BookingService service) : 
             courts=filtered.Skip((page-1)*24).Take(24).ToList();
         }
         else courts=await query.OrderBy(s=>s.Id).Skip((page-1)*24).Take(24).ToListAsync();
-        ViewBag.Sports=await db.MonTheThaos.Where(m=>m.TrangThai).ToListAsync(); ViewBag.Date=date; ViewBag.Area=area; ViewBag.SportId=sportId; ViewBag.Page=page;
+
+        var courtIds = courts.Select(c => c.Id).ToList();
+        var refDate = date ?? VietnamTime.Today;
+        var minPrices = courtIds.Count == 0
+            ? new Dictionary<long, decimal>()
+            : await db.BangGia.AsNoTracking()
+                .Where(g => courtIds.Contains(g.SanId) && g.DangApDung && g.NgayHieuLucTu <= refDate && (g.NgayHieuLucDen == null || g.NgayHieuLucDen >= refDate))
+                .GroupBy(g => g.SanId)
+                .Select(g => new { SanId = g.Key, MinPrice = g.Min(x => x.GiaThue) })
+                .ToDictionaryAsync(x => x.SanId, x => x.MinPrice);
+
+        var previewTarget = (selectedCourtId.HasValue ? courts.FirstOrDefault(c => c.Id == selectedCourtId.Value) : null) ?? courts.FirstOrDefault();
+        ViewBag.PreviewCalendar = previewTarget is not null ? await service.Calendar(previewTarget.Id, refDate) : null;
+        ViewBag.MinPrices = minPrices;
+        if (User.Identity?.IsAuthenticated == true)
+        {
+            var uid = AccessService.UserId(User);
+            ViewBag.WalletBalance = await db.ViNguoiDungs.AsNoTracking()
+                .Where(w => w.NguoiDungId == uid)
+                .Select(w => (decimal?)w.SoDuKhaDung)
+                .SingleOrDefaultAsync() ?? 0m;
+        }
+        ViewBag.Sports=await db.MonTheThaos.Where(m=>m.TrangThai).ToListAsync(); ViewBag.Date=date; ViewBag.Area=area; ViewBag.SportId=sportId; ViewBag.Page=page; ViewBag.SelectedCourtId=previewTarget?.Id;
         return View(courts);
     }
     public async Task<IActionResult> Details(long id,DateOnly? date)

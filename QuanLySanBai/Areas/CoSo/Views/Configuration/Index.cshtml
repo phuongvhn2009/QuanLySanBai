@@ -9,26 +9,31 @@
 
 <div class="page-heading mb-3">
     <div>
-        <p class="eyebrow mb-1">QUẢN LÝ CƠ SỞ</p>
-        <h1 class="mb-1">@c.TenCoSo</h1>
-        <p class="text-muted mb-0">
-            @c.DiaChi ·
-            <span class="badge @(c.TrangThaiDuyet == "DA_DUYET" ? "bg-success" : c.TrangThaiDuyet == "TU_CHOI" ? "bg-danger" : "bg-warning text-dark")">
-                @(c.TrangThaiDuyet == "DA_DUYET" ? "Đã duyệt" : c.TrangThaiDuyet == "TU_CHOI" ? "Đã từ chối" : "Chờ duyệt")
-            </span>
-            <span class="badge @(c.DangHoatDong ? "bg-primary" : "bg-secondary")">
-                @(c.DangHoatDong ? "Đang hoạt động" : "Ngừng hoạt động")
-            </span>
-        </p>
+        <h1 class="mb-1">@(Model.IsOwner ? "Cấu hình cơ sở" : "Quản lý bảng giá")</h1>
+        <p class="text-muted mb-0">Quản lý sân, thư viện ảnh, lịch hoạt động và điều kiện nhận đặt.</p>
     </div>
     @if (Model.IsOwner)
     {
         <div class="action-row">
-            <a asp-action="Facility" asp-route-id="@c.Id" class="btn btn-outline-secondary">Thông tin cơ sở</a>
+            <a asp-action="Facility" asp-route-id="@c.Id" class="btn btn-primary">Sửa thông tin</a>
             <a asp-controller="Members" asp-action="Index" asp-route-coSoId="@c.Id" class="btn btn-outline-secondary">Nhân viên</a>
-            <a asp-controller="Orders" asp-action="Index" asp-route-facilityId="@c.Id" class="btn btn-primary">Lịch &amp; Đơn đặt</a>
+            <a asp-controller="Orders" asp-action="Index" asp-route-facilityId="@c.Id" class="btn btn-outline-secondary">Lịch &amp; Đơn đặt</a>
         </div>
     }
+</div>
+
+<div class="sb-soft-banner mb-4">
+    <h2 class="h4 mt-0 mb-1">@c.TenCoSo</h2>
+    <p class="small text-muted mb-2">@c.DiaChi@(!string.IsNullOrWhiteSpace(c.SoDienThoaiHotline) ? $" · Hotline {c.SoDienThoaiHotline}" : "")</p>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+        <span class="sb-pill @(c.TrangThaiDuyet == "DA_DUYET" ? "sb-pill-success" : c.TrangThaiDuyet == "TU_CHOI" ? "sb-pill-danger" : "sb-pill-pending")">
+            @(c.TrangThaiDuyet == "DA_DUYET" ? "Đã duyệt" : c.TrangThaiDuyet == "TU_CHOI" ? "Đã từ chối" : "Chờ duyệt")
+        </span>
+        <span class="sb-pill @(c.DangHoatDong ? "sb-pill-success" : "sb-pill-neutral")">
+            @(c.DangHoatDong ? "Đang hoạt động" : "Ngừng hoạt động")
+        </span>
+        <span class="small text-muted ms-1">Mở cửa @c.GioMoCua.ToString("HH:mm") – @(c.GioDongCua == TimeOnly.MinValue ? "24:00" : c.GioDongCua.ToString("HH:mm"))</span>
+    </div>
 </div>
 
 @if (Model.ReadinessWarnings.Count > 0)
@@ -98,8 +103,8 @@
                         <table class="table align-middle mb-0">
                             <thead class="table-light">
                                 <tr>
-                                    <th>Tên sân</th>
-                                    <th>Loại sân</th>
+                                    <th>Sân / loại sân</th>
+                                    <th>Hình ảnh</th>
                                     <th>Trạng thái</th>
                                     <th class="text-end">Thao tác</th>
                                 </tr>
@@ -107,18 +112,38 @@
                             <tbody>
                                 @foreach (var s in Model.Courts)
                                 {
+                                    var img = CourtImageResolver.PrimaryForCourt(s);
                                     <tr>
-                                        <td><strong>@s.TenSan</strong></td>
-                                        <td>@s.LoaiSan.TenLoai</td>
                                         <td>
-                                            <span class="badge @(s.DangHoatDong ? "bg-success" : "bg-secondary")">@(s.DangHoatDong ? "Hoạt động" : "Ngừng")</span>
+                                            <div class="d-flex align-items-center gap-3">
+                                                <div class="sb-mini-thumb">
+                                                    <img src="@img.Url" alt="@s.TenSan" loading="lazy" />
+                                                </div>
+                                                <div>
+                                                    <strong>@s.TenSan</strong>
+                                                    <div class="small text-muted">@s.LoaiSan.TenLoai</div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            @if (img.IsRealPhoto)
+                                            {
+                                                <span class="sb-pill sb-pill-success">@img.PhotoCount ảnh thực tế</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="sb-pill sb-pill-neutral">Ảnh mặc định</span>
+                                            }
+                                        </td>
+                                        <td>
+                                            <span class="sb-pill @(s.DangHoatDong ? "sb-pill-success" : "sb-pill-neutral")">@(s.DangHoatDong ? "Hoạt động" : "Ngừng")</span>
                                             @if (s.DangBaoTri)
                                             {
-                                                <span class="badge bg-warning text-dark">Đang bảo trì</span>
+                                                <span class="sb-pill sb-pill-pending">Bảo trì</span>
                                             }
                                         </td>
                                         <td class="text-end">
-                                            <a class="btn btn-sm btn-outline-primary" asp-action="Court" asp-route-facilityId="@c.Id" asp-route-id="@s.Id">Sửa / Bảo trì</a>
+                                            <a class="btn btn-sm btn-outline-secondary" asp-action="Court" asp-route-facilityId="@c.Id" asp-route-id="@s.Id">Sửa sân &amp; Ảnh</a>
                                         </td>
                                     </tr>
                                 }

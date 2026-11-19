@@ -22,7 +22,22 @@ public class ManagementController(QuanLySanBaiContext db, RealtimeUpdates? updat
         await db.SaveChangesAsync();
         return RedirectToAction(nameof(Users));
     }
-    public async Task<IActionResult> Facilities() => View(await db.CoSos.AsNoTracking().Include(c => c.ChuSoHuu).OrderBy(c => c.Id).Take(200).ToListAsync());
+    public async Task<IActionResult> Facilities(string? status)
+    {
+        var all = await db.CoSos.AsNoTracking()
+            .Include(c => c.ChuSoHuu)
+            .Include(c => c.Sans).ThenInclude(s => s.HinhAnhSans)
+            .Include(c => c.Sans).ThenInclude(s => s.LoaiSan).ThenInclude(t => t.MonTheThao)
+            .OrderBy(c => c.Id)
+            .Take(200)
+            .ToListAsync();
+        ViewBag.PendingCount = all.Count(c => c.TrangThaiDuyet == "CHO_DUYET");
+        ViewBag.ApprovedCount = all.Count(c => c.TrangThaiDuyet == "DA_DUYET");
+        ViewBag.TotalCount = all.Count;
+        ViewBag.StatusFilter = status;
+        var filtered = string.IsNullOrEmpty(status) ? all : all.Where(c => c.TrangThaiDuyet == status).ToList();
+        return View(filtered);
+    }
     [HttpPost] public async Task<IActionResult> Review(long id, string decision)
     {
         if (decision is not ("DA_DUYET" or "TU_CHOI")) return BadRequest();

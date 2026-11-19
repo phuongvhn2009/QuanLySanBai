@@ -1,86 +1,192 @@
 @model QuanLySanBai.Models.Entities.DonDatSan
+@using QuanLySanBai.Services
 @{
     ViewData["Title"] = $"Đơn đặt {Model.MaDatSan}";
     var now = (DateTime)ViewBag.ServerNow;
     var remaining = Math.Max(0, (int)((Model.ThoiGianHetHanGiuCho ?? now) - now).TotalSeconds);
     var paid = (decimal)(ViewBag.Paid ?? 0m);
     var totalDue = Model.TongTienPhaiTra ?? 0m;
+    var balanceLeft = Math.Max(0m, totalDue - paid);
     var canPay = (bool)(ViewBag.CanPay ?? false);
     var canReschedule = (bool)(ViewBag.CanReschedule ?? false);
     var cancelPreview = ViewBag.CancelPreview as QuanLySanBai.ViewModels.CancelPreviewVM;
     var checkInQrUri = ViewBag.CheckInQrUri as string;
+    var primarySlot = Model.ChiTietDatSans.FirstOrDefault(x => x.TrangThaiSlot is not ("DA_DOI" or "DA_HUY")) ?? Model.ChiTietDatSans.FirstOrDefault();
+    var pillClass = Model.TrangThai switch
+    {
+        "CHO_THANH_TOAN" => "sb-pill-pending",
+        "DA_XAC_NHAN" or "DANG_SU_DUNG" or "HOAN_THANH" => "sb-pill-success",
+        "DA_HUY" or "HET_HAN" => "sb-pill-danger",
+        _ => "sb-pill-neutral"
+    };
 }
+
 <div class="mb-3 d-flex gap-2 flex-wrap">
-    <a asp-action="Index" class="btn btn-outline-secondary">← Đơn của tôi</a>
-    @if (canPay)
-    {
-        <a asp-controller="ThanhToan" asp-action="Index" asp-route-id="@Model.Id" class="btn btn-primary">Thanh toán ngay (VietQR / Ví / Quầy)</a>
-    }
-    @if (canReschedule)
-    {
-        <a asp-action="DoiLich" asp-route-id="@Model.Id" class="btn btn-outline-primary">Đổi lịch đặt sân</a>
-    }
+    <a asp-controller="Courts" asp-action="Index" class="btn btn-outline-secondary btn-sm">Quay lại tìm sân</a>
+    <a asp-action="Index" class="btn btn-outline-secondary btn-sm">Đơn của tôi</a>
 </div>
-<h1>Đơn @Model.MaDatSan</h1>
-<p>Trạng thái: <span class="badge @(Model.TrangThai == "CHO_THANH_TOAN" ? "bg-warning text-dark" : Model.TrangThai == "DA_XAC_NHAN" ? "bg-success" : "bg-secondary")">@QuanLySanBai.Services.OrderLabels.Status(Model.TrangThai)</span></p>
-<p>Khách: @Model.TenKhachHang · @Model.SdtKhachHang</p>
-<p>Tổng hiện tại: <strong>@totalDue.ToString("N0") đ</strong> · Cọc yêu cầu: @Model.TienCocYeuCau.ToString("N0") đ · Đã thanh toán: <strong class="text-success">@paid.ToString("N0") đ</strong></p>
+
+<div class="mb-3">
+    <h1 class="mb-1">Chi tiết đơn đặt sân</h1>
+    <p class="text-muted small mb-2">Mã đặt sân: <strong>@Model.MaDatSan</strong></p>
+    <span class="sb-pill @pillClass">@OrderLabels.Status(Model.TrangThai)</span>
+</div>
 
 @if (Model.TrangThai == "CHO_THANH_TOAN")
 {
-    <div class="alert alert-info py-2" role="status">
-        Giữ chỗ còn: <strong id="countdown" data-seconds="@remaining"></strong>
+    <div class="sb-soft-banner mb-4 d-flex justify-content-between align-items-center flex-wrap gap-3" role="status">
+        <div>
+            <div class="small text-muted mb-1">Thời gian giữ chỗ còn lại</div>
+            <div class="sb-countdown-big" id="countdown" data-seconds="@remaining">--:--</div>
+            <p class="small text-muted mt-2 mb-0">
+                Hết hạn lúc @Model.ThoiGianHetHanGiuCho?.ToString("HH:mm:ss dd/MM/yyyy") (giờ VN), sân sẽ tự mở lại. Đơn chưa được xác nhận.
+            </p>
+        </div>
+        @if (canPay)
+        {
+            <a asp-controller="ThanhToan" asp-action="Index" asp-route-id="@Model.Id" class="btn btn-primary">
+                Thanh toán ngay (VietQR / Ví / Quầy) →
+            </a>
+        }
     </div>
-    <p class="text-muted small">Hạn giữ chỗ theo giờ Việt Nam: @Model.ThoiGianHetHanGiuCho?.ToString("dd/MM/yyyy HH:mm:ss"). Hết hạn sẽ tự giải phóng. Bạn có thể thanh toán trực tuyến bằng VietQR / Ví hoặc tại quầy trước hạn giữ chỗ.</p>
 }
+
 @if (Model.TrangThai == "DA_XAC_NHAN" && !string.IsNullOrEmpty(checkInQrUri))
 {
-    <div class="card p-3 mb-3 border-success" id="checkin-qr-card">
-        <div class="d-flex flex-column flex-sm-row align-items-center gap-3">
+    <div class="card p-4 mb-4" style="border-color:var(--sb-success);" id="checkin-qr-card">
+        <div class="d-flex flex-column flex-sm-row align-items-center gap-4">
             <img src="@checkInQrUri" alt="Mã QR Check-in đơn @Model.MaDatSan" width="200" height="200" class="bg-white p-2 border rounded flex-shrink-0" />
             <div>
-                <h2 class="h5 mb-1 text-success">Mã QR Check-in tại sân</h2>
-                <p class="mb-2 small">Đưa mã QR này cho nhân viên sân quét khi đến nhận sân (mở check-in từ 15 phút trước giờ chơi).</p>
-                <p class="mb-1 small">Mã đặt sân: <strong>@Model.MaDatSan</strong> · Mã QR: <code data-checkin-code>@Model.MaQrCheckin</code></p>
+                <h2 class="h5 mt-0 mb-1 text-success">Mã QR Check-in tại sân</h2>
+                <p class="mb-2 small text-muted">Đưa mã QR này cho nhân viên sân quét khi đến nhận sân (mở check-in từ 15 phút trước giờ chơi).</p>
+                <p class="mb-2 small">Mã đặt sân: <strong>@Model.MaDatSan</strong> · Mã QR: <code data-checkin-code>@Model.MaQrCheckin</code></p>
                 @if (paid >= totalDue)
                 {
-                    <span class="badge bg-success">Đã thanh toán đủ — chỉ cần quét QR để vào sân</span>
+                    <span class="sb-pill sb-pill-success">Đã thanh toán đủ — chỉ cần quét QR để vào sân</span>
                 }
                 else
                 {
-                    <span class="badge bg-warning text-dark">Còn lại @((totalDue - paid).ToString("N0")) đ cần thanh toán tại quầy hoặc online</span>
+                    <span class="sb-pill sb-pill-pending">Còn lại @balanceLeft.ToString("N0") đ cần thanh toán tại quầy hoặc online</span>
                 }
             </div>
         </div>
     </div>
 }
-@foreach (var c in Model.ChiTietDatSans.OrderByDescending(x => x.TrangThaiSlot != "DA_DOI"))
-{
-    <div class="card p-3 mb-3 @(c.TrangThaiSlot == "DA_DOI" ? "opacity-75 bg-light" : "")">
-        <h2 class="h5">@c.San.TenSan · @c.NgaySuDung.ToString("dd/MM/yyyy") · @c.GioBatDau.ToString("HH:mm")–@(c.GioKetThuc == TimeOnly.MinValue ? "24:00" : c.GioKetThuc.ToString("HH:mm"))</h2>
-        <p class="mb-1"><span class="badge @(c.TrangThaiSlot == "DA_DOI" ? "bg-light text-dark border" : "bg-secondary")">@c.TrangThaiSlot</span> · Giá lưu lúc đặt: @c.GiaThue.ToString("N0") đ</p>
-        <p class="mb-1 text-muted small">Chính sách lúc đặt: @c.ChinhSachHuyDoi.TenChinhSach</p>
-        @foreach (var f in c.ChinhSachHuyDoi.MucPhiHuyDois.OrderBy(f => f.SoGioTuTruocTran))
-        {
-            <p class="mb-0 text-muted small">@f.SoGioTuTruocTran–@(f.SoGioDenTruocTran?.ToString() ?? "∞") giờ: hủy @f.TiLePhiHuy.ToString("0.##")%, đổi @f.TiLePhiDoi.ToString("0.##")%</p>
-        }
+
+<div class="row g-4 mb-4">
+    <!-- Left: Thông tin đặt sân (Figma 43:952 / 43:1000 / 43:1047) -->
+    <div class="col-lg-7">
+        <div class="card p-4 h-100">
+            <h2 class="h5 mt-0 mb-3">Thông tin đặt sân</h2>
+            @if (primarySlot is not null)
+            {
+                var img = CourtImageResolver.PrimaryForCourt(primarySlot.San);
+                <div class="d-flex flex-column flex-sm-row gap-3 pb-3 mb-3 border-bottom align-items-sm-center">
+                    <div class="sb-court-thumb-wrap" style="width:150px;">
+                        <img src="@img.Url" alt="@primarySlot.San.TenSan" />
+                    </div>
+                    <div>
+                        <div class="fw-bold fs-5">@primarySlot.San.TenSan &bull; @primarySlot.San.LoaiSan?.TenLoai</div>
+                        <div class="small text-muted">@Model.CoSo?.TenCoSo</div>
+                        <div class="small text-muted">@Model.CoSo?.DiaChi</div>
+                    </div>
+                </div>
+            }
+
+            @foreach (var c in Model.ChiTietDatSans.OrderByDescending(x => x.TrangThaiSlot != "DA_DOI"))
+            {
+                <div class="pb-2 mb-2 @(c.TrangThaiSlot == "DA_DOI" ? "opacity-75 border-bottom" : "")">
+                    <div class="row g-2 small">
+                        <div class="col-sm-6">
+                            <div class="text-muted">Ngày sử dụng</div>
+                            <div class="fw-bold">@c.NgaySuDung.ToString("dd/MM/yyyy")</div>
+                        </div>
+                        <div class="col-sm-6">
+                            <div class="text-muted">Khung giờ</div>
+                            <div class="fw-bold">
+                                @c.GioBatDau.ToString("HH:mm") – @(c.GioKetThuc == TimeOnly.MinValue ? "24:00" : c.GioKetThuc.ToString("HH:mm"))
+                                @if (c.TrangThaiSlot == "DA_DOI")
+                                {
+                                    <span class="sb-pill sb-pill-neutral ms-1">Đã đổi</span>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            <div class="row g-2 small pt-2 border-top">
+                <div class="col-sm-6">
+                    <div class="text-muted">Khách đặt</div>
+                    <div class="fw-bold">@Model.TenKhachHang</div>
+                </div>
+                <div class="col-sm-6">
+                    <div class="text-muted">Số điện thoại</div>
+                    <div class="fw-bold">@Model.SdtKhachHang</div>
+                </div>
+            </div>
+        </div>
     </div>
-}
+
+    <!-- Right: Chi phí đặt sân -->
+    <div class="col-lg-5">
+        <div class="card p-4 h-100">
+            <h2 class="h5 mt-0 mb-3">Chi phí đặt sân</h2>
+            <div class="small text-muted">Tổng tiền thuê sân</div>
+            <div class="fs-2 fw-bold mb-2">@totalDue.ToString("N0") đ</div>
+            <div class="d-flex justify-content-between small mb-1">
+                <span class="text-muted">Cọc yêu cầu</span>
+                <strong>@Model.TienCocYeuCau.ToString("N0") đ</strong>
+            </div>
+            <div class="d-flex justify-content-between small mb-1">
+                <span class="text-muted">Đã thanh toán</span>
+                <strong class="text-success">@paid.ToString("N0") đ</strong>
+            </div>
+            <div class="d-flex justify-content-between small mb-3">
+                <span class="text-muted">Còn phải thanh toán</span>
+                <strong class="@(balanceLeft > 0 ? "text-danger" : "text-success")">@balanceLeft.ToString("N0") đ</strong>
+            </div>
+
+            <div class="d-grid gap-2 mb-3">
+                @if (canPay)
+                {
+                    <a asp-controller="ThanhToan" asp-action="Index" asp-route-id="@Model.Id" class="btn btn-primary w-100">Thanh toán ngay</a>
+                }
+                @if (canReschedule)
+                {
+                    <a asp-action="DoiLich" asp-route-id="@Model.Id" class="btn btn-outline-secondary w-100">Đổi lịch đặt sân</a>
+                }
+            </div>
+
+            @if (primarySlot?.ChinhSachHuyDoi is not null)
+            {
+                <hr class="my-2" />
+                <div class="small fw-bold mb-1">Chính sách tại thời điểm đặt</div>
+                <div class="small text-muted mb-1">@primarySlot.ChinhSachHuyDoi.TenChinhSach</div>
+                @foreach (var f in primarySlot.ChinhSachHuyDoi.MucPhiHuyDois.OrderBy(f => f.SoGioTuTruocTran))
+                {
+                    <div class="small text-muted">@f.SoGioTuTruocTran–@(f.SoGioDenTruocTran?.ToString() ?? "∞") giờ: hủy @f.TiLePhiHuy.ToString("0.##")%, đổi @f.TiLePhiDoi.ToString("0.##")%</div>
+                }
+            }
+        </div>
+    </div>
+</div>
 
 @if (Model.ThanhToanDons.Any())
 {
-    <div class="card p-3 mb-3">
-        <h2 class="h5">Lịch sử thanh toán</h2>
+    <div class="card p-4 mb-3">
+        <h2 class="h5 mt-0 mb-3">Lịch sử thanh toán</h2>
         @foreach (var p in Model.ThanhToanDons.OrderByDescending(x => x.Id))
         {
-            <div class="d-flex justify-content-between align-items-center border-bottom py-2">
+            <div class="d-flex justify-content-between align-items-center border-bottom py-2 flex-wrap gap-2">
                 <div>
-                    <strong>@p.SoTien.ToString("N0") đ</strong> · @p.PhuongThuc · @p.MucDich · <span class="badge bg-success">@p.TrangThai</span>
+                    <strong>@p.SoTien.ToString("N0") đ</strong> · @p.PhuongThuc · @p.MucDich
+                    <span class="sb-pill sb-pill-success ms-1">@p.TrangThai</span>
                     <div class="small text-muted">@((p.NgayThanhToan ?? p.NgayTao).ToString("dd/MM/yyyy HH:mm")) · Mã @p.MaThanhToan</div>
                 </div>
                 @if (p.TrangThai == "THANH_CONG")
                 {
-                    <a asp-controller="ThanhToan" asp-action="HoaDon" asp-route-id="@p.Id" class="btn btn-sm btn-outline-primary">Xem / In hóa đơn</a>
+                    <a asp-controller="ThanhToan" asp-action="HoaDon" asp-route-id="@p.Id" class="btn btn-sm btn-outline-secondary">Xem / In hóa đơn</a>
                 }
             </div>
         }
@@ -92,7 +198,7 @@
             <h3 class="h6 mt-3">Lịch sử hoàn tiền</h3>
             @foreach (var h in refunds)
             {
-                <p class="mb-1 small">Mã hoàn: <code>@h.MaHoanTien</code> · Số tiền: <strong>@h.SoTien.ToString("N0") đ</strong> · Phương thức: @h.PhuongThuc · Trạng thái: <span class="badge bg-info text-dark">@h.TrangThai</span></p>
+                <p class="mb-1 small">Mã hoàn: <code>@h.MaHoanTien</code> · Số tiền: <strong>@h.SoTien.ToString("N0") đ</strong> · Phương thức: @h.PhuongThuc · <span class="sb-pill sb-pill-info">@h.TrangThai</span></p>
             }
         }
     </div>
@@ -123,10 +229,11 @@ else if (cancelPreview is not null && Model.TrangThai is "CHO_THANH_TOAN" or "DA
             <input name="Id" value="@Model.Id" type="hidden" />
             <input name="Version" value="@Convert.ToBase64String(Model.RowVersion)" type="hidden" />
             <label class="form-label">Lý do hủy <input name="Reason" class="form-control" required maxlength="1000" /></label>
-            <button class="btn btn-danger">Xác nhận hủy &amp; hoàn tiền</button>
+            <button class="btn btn-outline-danger">Xác nhận hủy &amp; hoàn tiền</button>
         </form>
     </details>
 }
+
 @section Scripts {
     <script>
         const el = document.getElementById('countdown');
@@ -135,7 +242,9 @@ else if (cancelPreview is not null && Model.TrangThai is "CHO_THANH_TOAN" or "DA
             let refreshed = false;
             function tick() {
                 const left = Math.max(0, Math.ceil((deadline - performance.now()) / 1000));
-                el.textContent = left > 0 ? Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0') : 'Đã hết hạn giữ chỗ';
+                el.textContent = left > 0
+                    ? String(Math.floor(left / 60)).padStart(2, '0') + ':' + String(left % 60).padStart(2, '0')
+                    : 'Đã hết hạn giữ chỗ';
                 if (!left && !refreshed) {
                     refreshed = true;
                     setTimeout(() => location.reload(), 35000);

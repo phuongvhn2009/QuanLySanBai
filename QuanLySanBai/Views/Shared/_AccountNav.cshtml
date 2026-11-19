@@ -2,39 +2,90 @@
 @using QuanLySanBai.Services
 @inject QuanLySanBai.Data.QuanLySanBaiContext Db
 @{
-    var signedIn=User.Identity?.IsAuthenticated==true;
-    var admin=User.IsInRole("ADMIN");
-    var id=AccessService.UserId(User);
-    var hasFacilities=signedIn && !admin && await Db.CoSos.AnyAsync(c=>c.TrangThaiDuyet=="DA_DUYET" && (c.ChuSoHuuId==id || c.ThanhVienCoSos.Any(m=>m.NguoiDungId==id && m.TrangThaiHoatDong)));
-    var applications=signedIn && !admin && await Db.CoSos.AnyAsync(c=>c.ChuSoHuuId==id && c.TrangThaiDuyet!="DA_DUYET");
-    var owner=hasFacilities && await Db.CoSos.AnyAsync(c=>c.ChuSoHuuId==id && c.TrangThaiDuyet=="DA_DUYET");
-    var role=admin ? "Quản trị viên" : owner ? "Chủ cơ sở" : hasFacilities ? "Nhân viên cơ sở" : "Khách hàng";
-    var path=Context.Request.Path.Value ?? "";
+    var signedIn = User.Identity?.IsAuthenticated == true;
+    var admin = User.IsInRole("ADMIN");
+    var id = AccessService.UserId(User);
+    var hasFacilities = signedIn && !admin && await Db.CoSos.AnyAsync(c => c.TrangThaiDuyet == "DA_DUYET" && (c.ChuSoHuuId == id || c.ThanhVienCoSos.Any(m => m.NguoiDungId == id && m.TrangThaiHoatDong)));
+    var applications = signedIn && !admin && await Db.CoSos.AnyAsync(c => c.ChuSoHuuId == id && c.TrangThaiDuyet != "DA_DUYET");
+    var owner = hasFacilities && await Db.CoSos.AnyAsync(c => c.ChuSoHuuId == id && c.TrangThaiDuyet == "DA_DUYET");
+    var role = admin ? "Quản trị viên" : owner ? "Chủ cơ sở" : hasFacilities ? "Nhân viên cơ sở" : "Khách hàng";
+    var path = Context.Request.Path.Value ?? "";
 }
 <nav class="navbar navbar-expand-lg app-nav" aria-label="Điều hướng chính">
-<div class="container">
-<a class="navbar-brand fw-bold" href="/">Sân Bãi</a>
-@if(signedIn) { <span class="role-label">@role</span> }
-<button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#appMenu" aria-controls="appMenu" aria-expanded="false" aria-label="Mở menu"><span class="navbar-toggler-icon"></span></button>
-<div class="collapse navbar-collapse" id="appMenu">
-<div class="navbar-nav me-auto ms-lg-4">
-@if(admin) {
-<a class="nav-link @(path=="/Admin" ? "active" : "")" href="/Admin">Tổng quan</a>
-<a class="nav-link @(path.Contains("Users") ? "active" : "")" href="/Admin/Management/Users">Người dùng</a>
-<a class="nav-link @(path.Contains("Facilities") ? "active" : "")" href="/Admin/Management/Facilities">Duyệt cơ sở</a>
-<a class="nav-link @(path.Contains("Catalog") ? "active" : "")" href="/Admin/Catalog">Danh mục</a>
-<a class="nav-link @(path.Contains("Payouts") ? "active" : "")" href="/Admin/Payouts">Tài chính</a>
-} else {
-@if(hasFacilities) { <a class="nav-link @(path.StartsWith("/CoSo") ? "active" : "")" href="/CoSo">@(owner ? "Quản lý cơ sở" : "Cơ sở làm việc")</a> }
-else if(applications) { <a class="nav-link @(path.StartsWith("/CoSo") ? "active" : "")" href="/CoSo">Đơn đăng ký cơ sở</a> }
-<a class="nav-link @(path.StartsWith("/Courts") ? "active" : "")" href="/Courts">Tìm sân</a>
-@if(signedIn) { <a class="nav-link @(path.StartsWith("/Bookings") ? "active" : "")" href="/Bookings">Lịch đặt của tôi</a> <a class="nav-link @(path.StartsWith("/Wallet") ? "active" : "")" href="/Wallet">Ví của tôi</a> }
-}
-</div>
-@if(signedIn) {
-<div class="dropdown"><button class="btn btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">@User.Identity!.Name</button>
-<ul class="dropdown-menu dropdown-menu-end"><li><a class="dropdown-item" href="/Account/Profile">Hồ sơ cá nhân</a></li>
-@if(!admin && !hasFacilities && !applications) { <li><a class="dropdown-item" href="/CoSo/Configuration/Facility">Đăng ký cơ sở kinh doanh</a></li> }
-<li><hr class="dropdown-divider" /></li><li><form action="/Account/Logout" method="post">@Html.AntiForgeryToken()<button class="dropdown-item text-danger" type="submit">Đăng xuất</button></form></li></ul></div>
-} else { <div class="d-flex gap-2"><a class="btn btn-outline-primary" href="/Account/Login">Đăng nhập</a><a class="btn btn-primary" href="/Account/Register">Tạo tài khoản</a></div> }
-</div></div></nav>
+    <div class="container">
+        <a class="navbar-brand sb-brand" href="/">
+            <span class="sb-brand-mark" aria-hidden="true">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                    <rect x="3" y="4" width="18" height="16" rx="2" stroke="white" stroke-width="2" />
+                    <line x1="12" y1="4" x2="12" y2="20" stroke="white" stroke-width="1.8" />
+                    <circle cx="12" cy="12" r="3.2" stroke="white" stroke-width="1.8" />
+                </svg>
+            </span>
+            <span>Sân Bãi</span>
+        </a>
+        @if (signedIn)
+        {
+            <span class="role-label d-none d-sm-inline-block">@role</span>
+        }
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#appMenu" aria-controls="appMenu" aria-expanded="false" aria-label="Mở menu">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="appMenu">
+            <div class="navbar-nav me-auto ms-lg-4 gap-1">
+                @if (admin)
+                {
+                    <a class="nav-link @(path == "/Admin" ? "active" : "")" href="/Admin">Tổng quan</a>
+                    <a class="nav-link @(path.Contains("Facilities") ? "active" : "")" href="/Admin/Management/Facilities">Duyệt cơ sở</a>
+                    <a class="nav-link @(path.Contains("Users") ? "active" : "")" href="/Admin/Management/Users">Người dùng</a>
+                    <a class="nav-link @(path.Contains("Catalog") ? "active" : "")" href="/Admin/Catalog">Danh mục thể thao</a>
+                    <a class="nav-link @(path.Contains("Payouts") ? "active" : "")" href="/Admin/Payouts">Tài chính</a>
+                }
+                else
+                {
+                    @if (hasFacilities)
+                    {
+                        <a class="nav-link @(path.StartsWith("/CoSo") ? "active" : "")" href="/CoSo">@(owner ? "Quản lý cơ sở" : "Cơ sở làm việc")</a>
+                    }
+                    else if (applications)
+                    {
+                        <a class="nav-link @(path.StartsWith("/CoSo") ? "active" : "")" href="/CoSo">Đơn đăng ký cơ sở</a>
+                    }
+                    <a class="nav-link @(path.StartsWith("/Courts") ? "active" : "")" href="/Courts">Tìm sân</a>
+                    @if (signedIn)
+                    {
+                        <a class="nav-link @(path.StartsWith("/Bookings") ? "active" : "")" href="/Bookings">Lịch đặt của tôi</a>
+                        <a class="nav-link @(path.StartsWith("/Wallet") ? "active" : "")" href="/Wallet">Ví của tôi</a>
+                    }
+                }
+            </div>
+            @if (signedIn)
+            {
+                <div class="dropdown">
+                    <button class="btn btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">@User.Identity!.Name</button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li class="dropdown-header d-sm-none">@role</li>
+                        <li><a class="dropdown-item" href="/Account/Profile">Hồ sơ cá nhân</a></li>
+                        @if (!admin && !hasFacilities && !applications)
+                        {
+                            <li><a class="dropdown-item" href="/CoSo/Configuration/Facility">Đăng ký cơ sở kinh doanh</a></li>
+                        }
+                        <li><hr class="dropdown-divider" /></li>
+                        <li>
+                            <form action="/Account/Logout" method="post">
+                                @Html.AntiForgeryToken()
+                                <button class="dropdown-item text-danger" type="submit">Đăng xuất</button>
+                            </form>
+                        </li>
+                    </ul>
+                </div>
+            }
+            else
+            {
+                <div class="d-flex gap-2">
+                    <a class="btn btn-outline-secondary" href="/Account/Login">Đăng nhập</a>
+                    <a class="btn btn-primary" href="/Account/Register">Tạo tài khoản</a>
+                </div>
+            }
+        </div>
+    </div>
+</nav>

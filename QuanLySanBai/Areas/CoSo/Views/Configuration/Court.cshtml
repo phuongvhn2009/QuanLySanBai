@@ -1,5 +1,213 @@
 @model QuanLySanBai.ViewModels.CourtForm
-<h1>Cấu hình sân</h1><form method="post" class="col-lg-7"><div asp-validation-summary="All" class="text-danger"></div><input asp-for="Id" type="hidden" /><input asp-for="FacilityId" type="hidden" />
-<label asp-for="Name"></label><input asp-for="Name" class="form-control mb-3" />
-<label asp-for="TypeId"></label><select asp-for="TypeId" class="form-select mb-3">@foreach(var t in (List<QuanLySanBai.Models.Entities.LoaiSan>)ViewBag.Types) { <option value="@t.Id">@t.MonTheThao.TenMon — @t.TenLoai</option> }</select>
-<label class="d-block"><input asp-for="Active" /> Đang hoạt động</label><label class="d-block"><input asp-for="Maintenance" /> Bảo trì</label><button class="btn btn-primary mt-3">Lưu sân</button></form>
+@using QuanLySanBai.Models.Entities
+@using QuanLySanBai.Services
+@{
+    ViewData["Title"] = Model.Id == 0 ? "Thêm sân mới" : $"Cấu hình & Ảnh — {Model.Name}";
+    var types = ViewBag.Types as List<LoaiSan> ?? new();
+    var images = ViewBag.CourtImages as List<HinhAnhSan> ?? new();
+    var defaultTypeImg = ViewBag.DefaultTypeImage as string ?? CourtImageResolver.PlaceholderUrl;
+    var maxImages = (int)(ViewBag.MaxImages ?? 10);
+    var maxFileSizeMb = (double)(ViewBag.MaxFileSizeMb ?? 5.0);
+    var remainingSlots = Math.Max(0, maxImages - images.Count);
+}
+
+<div class="mb-3">
+    <a asp-action="Index" asp-route-id="@Model.FacilityId" class="btn btn-outline-secondary btn-sm">← Quay lại cấu hình cơ sở</a>
+</div>
+
+<div class="page-heading mb-3">
+    <div>
+        <div class="eyebrow">CẤU HÌNH SÂN</div>
+        <h1 class="mb-0">@(Model.Id == 0 ? "Thêm sân mới" : Model.Name)</h1>
+    </div>
+</div>
+
+<div class="row g-4 align-items-start">
+    <!-- Left: Thông tin sân -->
+    <div class="col-lg-5">
+        <div class="card p-4">
+            <h2 class="h5 mt-0 mb-3">Thông tin cơ bản</h2>
+            <form method="post">
+                <div asp-validation-summary="All" class="text-danger small mb-2"></div>
+                <input asp-for="Id" type="hidden" />
+                <input asp-for="FacilityId" type="hidden" />
+
+                <div class="mb-3">
+                    <label asp-for="Name" class="form-label fw-semibold small"></label>
+                    <input asp-for="Name" class="form-control" placeholder="Ví dụ: Sân 1" />
+                </div>
+
+                <div class="mb-3">
+                    <label asp-for="TypeId" class="form-label fw-semibold small"></label>
+                    <select asp-for="TypeId" id="courtTypeSelect" class="form-select">
+                        @foreach (var t in types)
+                        {
+                            <option value="@t.Id" data-type-img="@CourtImageResolver.ForCourtType(t, t.MonTheThao)">@t.MonTheThao.TenMon — @t.TenLoai</option>
+                        }
+                    </select>
+                </div>
+
+                <div class="mb-3 p-2 rounded" style="background:var(--sb-surface-soft);border:1px solid var(--sb-border);">
+                    <div class="small text-muted mb-2">Ảnh minh họa mặc định của loại sân (hiển thị khi sân chưa có ảnh thực tế):</div>
+                    <img id="courtTypePreviewImg" src="@defaultTypeImg" alt="Ảnh minh họa loại sân" class="sb-upload-card-img" style="max-height:170px;" />
+                </div>
+
+                <div class="form-check mb-2">
+                    <input asp-for="Active" class="form-check-input" />
+                    <label asp-for="Active" class="form-check-label small fw-semibold">Đang hoạt động</label>
+                </div>
+                <div class="form-check mb-3">
+                    <input asp-for="Maintenance" class="form-check-input" />
+                    <label asp-for="Maintenance" class="form-check-label small fw-semibold">Đang bảo trì</label>
+                </div>
+
+                <button type="submit" class="btn btn-primary w-100">Lưu thông tin sân</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Right: Quản lý thư viện ảnh thực tế của chủ sân -->
+    <div class="col-lg-7">
+        <div class="card p-4">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+                <div>
+                    <h2 class="h5 mt-0 mb-0">Thư viện ảnh thực tế của sân</h2>
+                    <div class="small text-muted">Ảnh thực tế bạn tải lên sẽ được ưu tiên hiển thị thay cho ảnh minh họa loại sân.</div>
+                </div>
+                @if (Model.Id > 0)
+                {
+                    <span class="sb-pill @(images.Count > 0 ? "sb-pill-success" : "sb-pill-neutral")">@images.Count / @maxImages ảnh</span>
+                }
+            </div>
+
+            @if (Model.Id == 0)
+            {
+                <div class="sb-info-banner mt-2">
+                    Hãy bấm <strong>Lưu thông tin sân</strong> trước, sau đó mở lại sân để tải nhiều ảnh thực tế (JPG, PNG, WebP) và chọn ảnh đại diện.
+                </div>
+            }
+            else
+            {
+                <!-- Khu vực tải nhiều ảnh (kéo thả + chọn nhiều + xem trước + tiến trình) -->
+                @if (remainingSlots > 0)
+                {
+                    <form asp-action="UploadCourtImages" method="post" enctype="multipart/form-data" id="courtImageUploadForm"
+                          class="mb-4 mt-2"
+                          data-max-bytes="@((long)(maxFileSizeMb * 1024 * 1024))"
+                          data-remaining="@remainingSlots">
+                        <input type="hidden" name="facilityId" value="@Model.FacilityId" />
+                        <input type="hidden" name="courtId" value="@Model.Id" />
+                        <input type="file" name="files" id="courtImageFileInput" class="d-none" multiple accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" />
+
+                        <div class="sb-upload-dropzone" id="courtImageDropzone" role="button" tabindex="0" aria-label="Chọn hoặc kéo thả ảnh sân">
+                            <div class="fw-bold mb-1">Kéo thả ảnh vào đây hoặc bấm để chọn nhiều ảnh</div>
+                            <div class="small text-muted">Hỗ trợ JPG, JPEG, PNG, WebP · Tối đa @maxFileSizeMb.ToString("0.#") MB/ảnh · Còn thêm được @remainingSlots ảnh</div>
+                        </div>
+
+                        <div id="courtImagePreviewGrid" class="row g-2 mt-2 d-none"></div>
+
+                        <div id="courtUploadProgressWrap" class="progress mt-3 d-none" style="height:20px;">
+                            <div id="courtUploadProgressBar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width:0%;">0%</div>
+                        </div>
+
+                        <div id="courtUploadStatus" class="d-none" role="status"></div>
+
+                        <div class="mt-3 d-flex justify-content-end">
+                            <button type="submit" id="courtUploadSubmitBtn" class="btn btn-primary btn-sm" disabled>Tải ảnh lên</button>
+                        </div>
+                    </form>
+                }
+                else
+                {
+                    <div class="sb-info-banner my-3">Sân đã đạt giới hạn @maxImages ảnh. Hãy xóa hoặc thay thế ảnh cũ nếu muốn đổi hình mới.</div>
+                }
+
+                <hr class="my-3" />
+
+                <!-- Danh sách ảnh đã tải lên -->
+                @if (images.Count == 0)
+                {
+                    <div class="empty-state py-4">
+                        <img src="@defaultTypeImg" alt="Ảnh mặc định loại sân" class="rounded mb-3 border" style="width:220px;aspect-ratio:16/10;object-fit:cover;" />
+                        <div class="fw-bold mb-1">Chưa có ảnh thực tế</div>
+                        <p class="small text-muted mb-0">Khách hàng hiện đang thấy <strong>ảnh minh họa loại sân</strong>. Hãy tải ảnh thật của sân để tăng độ tin cậy khi đặt lịch.</p>
+                    </div>
+                }
+                else
+                {
+                    <div class="small fw-semibold text-muted mb-2">Ảnh đã lưu (sắp xếp theo thứ tự hiển thị)</div>
+                    <div class="row g-3">
+                        @for (int i = 0; i < images.Count; i++)
+                        {
+                            var img = images[i];
+                            <div class="col-sm-6">
+                                <div class="card p-2 h-100 @(img.LaAnhDaiDien ? "border-success" : "")">
+                                    <div class="position-relative mb-2">
+                                        <img src="@img.DuongDan" alt="Ảnh thực tế sân @Model.Name" class="sb-upload-card-img" loading="lazy" />
+                                        <span class="sb-photo-source-tag @(img.LaAnhDaiDien ? "is-real" : "is-default")">
+                                            @(img.LaAnhDaiDien ? "Ảnh đại diện" : $"Thứ tự #{i + 1}")
+                                        </span>
+                                    </div>
+
+                                    <div class="d-flex flex-wrap gap-1 mt-auto">
+                                        @if (!img.LaAnhDaiDien)
+                                        {
+                                            <form asp-action="SetPrimaryCourtImage" method="post" class="m-0">
+                                                <input type="hidden" name="facilityId" value="@Model.FacilityId" />
+                                                <input type="hidden" name="courtId" value="@Model.Id" />
+                                                <input type="hidden" name="imageId" value="@img.Id" />
+                                                <button type="submit" class="btn btn-sm btn-outline-primary py-0 px-2" style="min-height:30px;">Đặt đại diện</button>
+                                            </form>
+                                        }
+
+                                        @if (i > 0)
+                                        {
+                                            <form asp-action="MoveCourtImage" method="post" class="m-0">
+                                                <input type="hidden" name="facilityId" value="@Model.FacilityId" />
+                                                <input type="hidden" name="courtId" value="@Model.Id" />
+                                                <input type="hidden" name="imageId" value="@img.Id" />
+                                                <input type="hidden" name="direction" value="-1" />
+                                                <button type="submit" class="btn btn-sm btn-outline-secondary py-0 px-2" style="min-height:30px;" title="Đưa lên trước">←</button>
+                                            </form>
+                                        }
+                                        @if (i < images.Count - 1)
+                                        {
+                                            <form asp-action="MoveCourtImage" method="post" class="m-0">
+                                                <input type="hidden" name="facilityId" value="@Model.FacilityId" />
+                                                <input type="hidden" name="courtId" value="@Model.Id" />
+                                                <input type="hidden" name="imageId" value="@img.Id" />
+                                                <input type="hidden" name="direction" value="1" />
+                                                <button type="submit" class="btn btn-sm btn-outline-secondary py-0 px-2" style="min-height:30px;" title="Đưa xuống sau">→</button>
+                                            </form>
+                                        }
+
+                                        <form asp-action="ReplaceCourtImage" method="post" enctype="multipart/form-data" class="m-0">
+                                            <input type="hidden" name="facilityId" value="@Model.FacilityId" />
+                                            <input type="hidden" name="courtId" value="@Model.Id" />
+                                            <input type="hidden" name="imageId" value="@img.Id" />
+                                            <label class="btn btn-sm btn-outline-secondary py-0 px-2 m-0" style="min-height:30px;cursor:pointer;">
+                                                Thay ảnh
+                                                <input type="file" name="file" class="d-none" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" onchange="if(this.files.length) this.form.submit();" />
+                                            </label>
+                                        </form>
+
+                                        <form asp-action="DeleteCourtImage" method="post" class="m-0 ms-auto" data-confirm="Xóa ảnh này khỏi thư viện sân?">
+                                            <input type="hidden" name="facilityId" value="@Model.FacilityId" />
+                                            <input type="hidden" name="courtId" value="@Model.Id" />
+                                            <input type="hidden" name="imageId" value="@img.Id" />
+                                            <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-2" style="min-height:30px;">Xóa</button>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            }
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/court-images.js" asp-append-version="true"></script>
+}

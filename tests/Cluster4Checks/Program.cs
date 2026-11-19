@@ -55,6 +55,9 @@ try
     var updateScript=File.ReadAllText(Path.Combine(root,"Data","Updates","002_Cluster7_PaymentWebhook.sql"));
     await using(var uc=new SqlConnection(connection)) { await uc.OpenAsync(); foreach(var batch in Regex.Split(updateScript,@"^GO\s*$",RegexOptions.Multiline|RegexOptions.IgnoreCase)) if(!string.IsNullOrWhiteSpace(batch)) { await using var command=new SqlCommand(batch,uc) { CommandTimeout=120 }; await command.ExecuteNonQueryAsync(); } }
     Check(await Scalar("SELECT COUNT(*) FROM sys.tables WHERE is_ms_shipped=0")==49,"F01: Cluster 7 migration applied cleanly (49 tables)");
+    var imgScript=File.ReadAllText(Path.Combine(root,"Data","Updates","003_CourtImages.sql"));
+    await using(var ic=new SqlConnection(connection)) { await ic.OpenAsync(); foreach(var batch in Regex.Split(imgScript,@"^GO\s*$",RegexOptions.Multiline|RegexOptions.IgnoreCase)) if(!string.IsNullOrWhiteSpace(batch)) { await using var command=new SqlCommand(batch,ic) { CommandTimeout=120 }; await command.ExecuteNonQueryAsync(); } }
+    Check(await Scalar("SELECT COUNT(*) FROM sys.tables WHERE is_ms_shipped=0")==50,"IMG: CourtImages migration 003 applied cleanly (50 tables)");
     var hasher=new PasswordHasher<NguoiDung>();
     async Task<long> User(string phone,string role) => await With(async db=> { var u=new NguoiDung { HoVaTen=role,SoDienThoai=phone,TrangThai=true,NgayTao=VietnamTime.Now,NgayCapNhat=VietnamTime.Now }; u.MatKhauHash=hasher.HashPassword(u,"Cluster4Test123!"); u.NguoiDungVaiTros.Add(new NguoiDungVaiTro { VaiTroId=(await db.VaiTros.SingleAsync(r=>r.MaVaiTro==role)).Id,NgayGan=VietnamTime.Now }); db.Add(u); await db.SaveChangesAsync(); return u.Id; });
     var owner=await User("0988000001","KHACH_HANG"); var customer=await User("0988000002","KHACH_HANG"); var other=await User("0988000003","KHACH_HANG"); var admin=await User("0988000004","ADMIN");
@@ -156,6 +159,7 @@ try
     var midnightOrder=await Book(customer,midnight,tomorrow); Check(midnightOrder>0,"B05: 23:00 to 24:00 booking succeeds");
     count+=await OperationChecks.Run(options,owner,customer,other,court,slot,facility,Sql);
     count+=await FinanceChecks.Run(options,admin,owner,customer,other,facility,court,slot,midnight,Sql,Scalar);
+    count+=await CourtImageChecks.Run(options,root,owner,other,facility,court);
     // Start actual MVC with the disposable DB to exercise auth, CSRF, binding, errors and views.
     var listener=new System.Net.Sockets.TcpListener(IPAddress.Loopback,0); listener.Start(); var port=((IPEndPoint)listener.LocalEndpoint).Port; listener.Stop();
     var start=new ProcessStartInfo("dotnet") { UseShellExecute=false,CreateNoWindow=true,RedirectStandardOutput=true,RedirectStandardError=true,WorkingDirectory=root };
@@ -173,6 +177,10 @@ try
         Check(token.Length>0,"HTTP token: "+action); values["__RequestVerificationToken"]=WebUtility.HtmlDecode(token); return await client.PostAsync(action,new FormUrlEncodedContent(values));
     }
     Check((int)(await client.GetAsync("/Courts")).StatusCode==200,"B01: public search renders");
+    var courtsSearchHtml=WebUtility.HtmlDecode(await client.GetStringAsync("/Courts"));
+    Check(courtsSearchHtml.Contains("/assets/images/") && courtsSearchHtml.Contains("Chọn sân. Hẹn giờ ra sân."),"IMG/UI HTTP: public search renders Figma Master-Detail and local court-type WebP");
+    var assetResp=await client.GetAsync("/assets/images/court-types/football-5.webp");
+    Check((int)assetResp.StatusCode==200 && (assetResp.Content.Headers.ContentType?.MediaType ?? "").Contains("webp"),"IMG HTTP: static WebP asset served with 200 image/webp");
     var detail="/Courts/Details/"+court+"?date="+tomorrow.ToString("yyyy-MM-dd");
     Check((int)(await client.GetAsync(detail)).StatusCode==200,"B02: calendar renders");
     Check((int)(await client.PostAsync("/Bookings/Create",new FormUrlEncodedContent(new Dictionary<string,string>()))).StatusCode is 302 or 400,"B03: anonymous POST rejected");
@@ -231,7 +239,35 @@ try
     response=await Post("/CoSo/Orders/Collect",payFields,"/CoSo/Orders/Details/"+payOrder);
     Check((int)response.StatusCode==302 && await Scalar($"SELECT COUNT(*) FROM Thanh_Toan_Don WHERE don_dat_san_id={payOrder}")==1,"O02: repeated HTTP submit is idempotent");
     Check((int)(await client.GetAsync("/CoSo/Orders?facilityId="+(facility+999))).StatusCode==302,"O06: foreign facility list forbidden");
-    foreach(var path in new[] {"/CoSo/Configuration/Index/"+facility,"/CoSo/Configuration/Facility/"+facility,"/CoSo/Configuration/Court?facilityId="+facility,"/CoSo/Configuration/Policy?facilityId="+facility}) { var r=await client.GetAsync(path); if((int)r.StatusCode!=200) Console.WriteLine(await r.Content.ReadAsStringAsync()); Check((int)r.StatusCode==200,"C01-C06 view renders "+path); }
+    foreach(var path in new[] {"/CoSo/Configuration/Index/"+facility,"/CoSo/Configuration/Facility/"+facility,"/CoSo/Configuration/Court?facilityId="+facility,"/CoSo/Configuration/Court?facilityId="+facility+"&id="+court,"/CoSo/Configuration/Policy?facilityId="+facility}) { var r=await client.GetAsync(path); if((int)r.StatusCode!=200) Console.WriteLine(await r.Content.ReadAsStringAsync()); Check((int)r.StatusCode==200,"C01-C06 view renders "+path); }
+    // HTTP End-to-End Court Image upload -> static serving -> search/detail display -> cleanup delete
+    {
+        var editHtml=await client.GetStringAsync($"/CoSo/Configuration/Court?facilityId={facility}&id={court}");
+        var uploadToken=WebUtility.HtmlDecode(Regex.Match(editHtml,"name=\"__RequestVerificationToken\"[^>]*value=\"([^\"]+)\"").Groups[1].Value);
+        byte[] samplePng=[0x89,0x50,0x4E,0x47,0x0D,0x0A,0x1A,0x0A,0x00,0x00,0x00,0x0D,0x49,0x48,0x44,0x52];
+        using var mp=new MultipartFormDataContent();
+        mp.Add(new StringContent(uploadToken),"__RequestVerificationToken");
+        mp.Add(new StringContent(facility.ToString()),"facilityId");
+        mp.Add(new StringContent(court.ToString()),"courtId");
+        var fileContent=new ByteArrayContent(samplePng);
+        fileContent.Headers.ContentType=new System.Net.Http.Headers.MediaTypeHeaderValue("image/png");
+        mp.Add(fileContent,"files","live-test.png");
+        using var req=new HttpRequestMessage(HttpMethod.Post,"/CoSo/Configuration/UploadCourtImages") { Content=mp };
+        req.Headers.Add("X-Requested-With","XMLHttpRequest");
+        var upResp=await client.SendAsync(req);
+        var upBody=await upResp.Content.ReadAsStringAsync();
+        Check((int)upResp.StatusCode==200 && upBody.Contains("\"ok\":true"),"IMG HTTP: owner AJAX upload returns 200 ok");
+        var savedImg=await With(db=>db.HinhAnhSans.AsNoTracking().SingleAsync(h=>h.SanId==court));
+        var serveResp=await client.GetAsync(savedImg.DuongDan);
+        Check((int)serveResp.StatusCode==200,"IMG HTTP: dynamically uploaded runtime image served at /uploads/courts/ with 200");
+        var searchWithReal=await client.GetStringAsync("/Courts");
+        var detailWithReal=await client.GetStringAsync("/Courts/Details/"+court);
+        Check(searchWithReal.Contains(savedImg.DuongDan) && detailWithReal.Contains(savedImg.DuongDan),"IMG HTTP: search and detail prioritize owner uploaded real photo");
+        var delResp=await Post("/CoSo/Configuration/DeleteCourtImage",new() { ["facilityId"]=facility.ToString(),["courtId"]=court.ToString(),["imageId"]=savedImg.Id.ToString() },$"/CoSo/Configuration/Court?facilityId={facility}&id={court}");
+        Check((int)delResp.StatusCode==302 && await Scalar($"SELECT COUNT(*) FROM Hinh_Anh_San WHERE san_id={court}")==0,"IMG HTTP: owner deletes uploaded image cleanly");
+        var afterDelServe=await client.GetAsync(savedImg.DuongDan);
+        Check((int)afterDelServe.StatusCode==404,"IMG HTTP: deleted physical image returns 404 (no orphan file)");
+    }
     await With(async db => {
         var member=new ThanhVienCoSo { CoSoId=facility,NguoiDungId=other,VaiTroNoiBo="QUAN_LY",TrangThaiHoatDong=true,NgayThamGia=VietnamTime.Now };
         member.PhanQuyenThanhViens.Add(new PhanQuyenThanhVien { QuyenHanId=(await db.QuyenHans.SingleAsync(q=>q.MaQuyen=="QUAN_LY_THANH_VIEN")).Id });

@@ -492,3 +492,6 @@ test-data/*.local.txt
 graphify-out/cache/
 graphify-out/.graphify_*
 graphify-out/manifest.json
+
+# Runtime user-uploaded images (do not commit runtime user data)
+QuanLySanBai/wwwroot/uploads/

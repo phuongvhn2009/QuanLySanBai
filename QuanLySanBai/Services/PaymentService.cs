@@ -157,7 +157,8 @@ public class PaymentService(
     public async Task<ThanhToanQrVM> GetQrDetails(long actorUserId, long gatewayTxId)
     {
         var gw = await db.GiaoDichCongThanhToans.AsNoTracking()
-            .Include(g => g.DonDatSan)
+            .Include(g => g.DonDatSan).ThenInclude(d => d!.CoSo)
+            .Include(g => g.DonDatSan).ThenInclude(d => d!.ChiTietDatSans).ThenInclude(c => c.San).ThenInclude(s => s.LoaiSan)
             .Include(g => g.ThanhToanDon)
             .Include(g => g.NapTienVi)
             .SingleOrDefaultAsync(g => g.Id == gatewayTxId)
@@ -183,11 +184,16 @@ public class PaymentService(
         if (!vietQr.IsConfigured)
             warning = "Chưa cấu hình SePay:AccountNumber / SePay:BankCode trong cấu hình hệ thống.";
 
+        var order = gw.DonDatSan;
+        var activeSlot = order?.ChiTietDatSans.FirstOrDefault(c => c.TrangThaiSlot is not ("DA_DOI" or "DA_HUY"))
+            ?? order?.ChiTietDatSans.FirstOrDefault();
+        var orderPaid = order is not null ? await OrderFinance.NetPaidAsync(db, order.Id) : 0m;
+
         return new ThanhToanQrVM
         {
             GatewayTxId = gw.Id,
             OrderId = gw.DonDatSanId,
-            MaDatSan = gw.DonDatSan?.MaDatSan,
+            MaDatSan = order?.MaDatSan,
             IsWalletDeposit = gw.NapTienVi is not null,
             PaymentCode = gw.MaDonHangCong,
             TransferContent = content,
@@ -198,12 +204,21 @@ public class PaymentService(
             AccountName = sepayOptions.Value.AccountName,
             Amount = gw.SoTien,
             Status = gw.TrangThai,
-            OrderStatus = gw.DonDatSan?.TrangThai ?? (gw.NapTienVi?.TrangThai ?? ""),
+            OrderStatus = order?.TrangThai ?? (gw.NapTienVi?.TrangThai ?? ""),
             ExpiresAt = gw.ThoiGianHetHanQr ?? gw.NgayTao.AddMinutes(15),
             ServerNow = now,
             PaymentId = gw.ThanhToanDon?.Id,
             SePayConfigured = vietQr.IsConfigured,
-            WarningMessage = warning
+            WarningMessage = warning,
+            TenCoSo = order?.CoSo?.TenCoSo,
+            TenSan = activeSlot?.San?.TenSan,
+            TenLoaiSan = activeSlot?.San?.LoaiSan?.TenLoai,
+            NgaySuDung = activeSlot?.NgaySuDung,
+            GioBatDau = activeSlot?.GioBatDau,
+            GioKetThuc = activeSlot?.GioKetThuc,
+            TongTienPhaiTra = order?.TongTienPhaiTra ?? gw.SoTien,
+            TienCocYeuCau = order?.TienCocYeuCau ?? 0m,
+            DaThanhToan = orderPaid
         };
     }
 
