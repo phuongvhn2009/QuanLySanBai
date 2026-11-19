@@ -1,12 +1,170 @@
 ﻿@model QuanLySanBai.ViewModels.OperationDetails
-@{var d=Model.Order;var remaining=(d.TongTienPhaiTra??0)-Model.Paid;ViewData["Title"]="Chi tiết đơn";}
-<a asp-action="Index" asp-route-facilityId="@d.CoSoId">← Danh sách đơn</a><h1 class="mt-3">Đơn @d.MaDatSan</h1><p><span class="status-label">@QuanLySanBai.Services.OrderLabels.Status(d.TrangThai)</span></p><p>@d.TenKhachHang · @d.SdtKhachHang · @(d.NguonDat=="TAI_QUAY" ? "Tại quầy" : "Khách đặt online")</p>
-<div class="card p-3 mb-3"><p>Tổng tiền: <strong>@d.TongTienPhaiTra?.ToString("N2") đ</strong> · Cọc yêu cầu: @d.TienCocYeuCau.ToString("N2") đ</p><p>Đã thu: <strong>@Model.Paid.ToString("N2") đ</strong> · Còn phải thu: <strong>@remaining.ToString("N2") đ</strong></p>@foreach(var c in d.ChiTietDatSans){<p>@c.San.TenSan · @c.NgaySuDung · @c.GioBatDau–@(c.GioKetThuc==TimeOnly.MinValue ? "24:00" : c.GioKetThuc.ToString())</p>}@if(d.TrangThai=="CHO_THANH_TOAN"){<p>Hạn giữ chỗ (giờ Việt Nam): @d.ThoiGianHetHanGiuCho</p>}</div>
-@if(Model.Collect && remaining>0 && d.TrangThai is "CHO_THANH_TOAN" or "DA_XAC_NHAN" or "DANG_SU_DUNG"){
-<details class="editor-section"><summary>Ghi nhận khoản thu</summary><p>Chỉ xác nhận sau khi thực tế nhận tiền. Lần đầu phải đủ cọc. Gửi lại cùng yêu cầu không tạo khoản thu thứ hai.</p><form asp-action="Collect" method="post" data-confirm="Bạn xác nhận đã thực tế nhận khoản tiền này?"><input name="Id" value="@d.Id" type="hidden" /><input name="Version" value="@Model.Version" type="hidden" /><input name="Key" value="@Guid.NewGuid().ToString("N")" type="hidden" /><label>Số tiền <input name="Amount" type="number" min="0.01" max="@remaining.ToString(System.Globalization.CultureInfo.InvariantCulture)" step="0.01" required /></label><label>Phương thức <select name="Method"><option value="TIEN_MAT">Tiền mặt</option><option value="CHUYEN_KHOAN_TAI_QUAY">Chuyển khoản tại quầy</option></select></label><label>Mục đích <select name="Purpose"><option value="COC">Tiền cọc</option><option value="THANH_TOAN">Thanh toán</option><option value="BO_SUNG">Thu bổ sung</option></select></label><label>Mã chuyển khoản (nếu có) <input name="Reference" maxlength="100" /></label><button class="btn btn-primary">Xác nhận đã nhận tiền</button></form></details>}
-@if(Model.Collect && d.TrangThai=="CHO_THANH_TOAN" && d.TienCocYeuCau==0){<form asp-action="Confirm" method="post"><input name="Id" value="@d.Id" type="hidden" /><input name="Version" value="@Model.Version" type="hidden" /><button class="btn btn-primary">Xác nhận đơn không yêu cầu cọc</button></form>}
-@if(Model.CheckIn && d.TrangThai=="DA_XAC_NHAN"){<details class="editor-section"><summary>Check-in khách</summary><form asp-action="CheckIn" method="post"><input name="Id" value="@d.Id" type="hidden" /><input name="Version" value="@Model.Version" type="hidden" /><label>Mã đặt sân hoặc nội dung mã QR <input name="Code" required maxlength="255" /></label><button class="btn btn-primary">Check-in</button></form></details>}
-@if(Model.CheckIn && d.TrangThai=="DANG_SU_DUNG"){<form asp-action="Complete" method="post" data-confirm="Kết thúc buổi sử dụng? Chỉ hoàn thành khi hết giờ và đã thu đủ tiền."><input name="Id" value="@d.Id" type="hidden" /><input name="Version" value="@Model.Version" type="hidden" /><button class="btn btn-primary">Hoàn thành buổi</button></form>}
-@if(Model.Cancel && Model.Paid==0 && d.TrangThai is "CHO_THANH_TOAN" or "DA_XAC_NHAN"){<details class="editor-section"><summary>Hủy đơn chưa thu tiền</summary><form asp-action="Cancel" method="post" data-confirm="Hủy đơn và giải phóng khung giờ?"><input name="Id" value="@d.Id" type="hidden" /><input name="Version" value="@Model.Version" type="hidden" /><label>Lý do <input name="Reason" required maxlength="1000" /></label><button class="btn btn-outline-danger">Hủy đơn</button></form></details>}
-<details class="editor-section"><summary>Lịch sử khoản thu (@d.ThanhToanDons.Count)</summary>@foreach(var p in d.ThanhToanDons.OrderBy(p=>p.Id)){<p>@p.NgayThanhToan · @p.SoTien.ToString("N2") đ · @p.PhuongThuc · @p.MucDich · người thu #@p.NhanVienThuId · mã @p.MaThanhToan</p>}</details>
-<details class="editor-section"><summary>Lịch sử sử dụng / hủy</summary>@foreach(var c in d.ChiTietDatSans){@foreach(var h in c.LichSuCheckIns){<p>Check-in: @h.ThoiGianCheckin · nhân viên #@h.NhanVienCheckinId · @h.PhuongThuc</p>}@if(c.LichSuHuySan!=null){<p>Hủy: @c.LichSuHuySan.NgayHuy · @c.LichSuHuySan.LyDoHuy · người xử lý #@c.LichSuHuySan.NguoiXuLyId</p>}}</details>
+@{
+    var d = Model.Order;
+    var remaining = (d.TongTienPhaiTra ?? 0) - Model.Paid;
+    ViewData["Title"] = "Chi tiết đơn";
+    var refunds = ViewBag.Refunds as List<QuanLySanBai.Models.Entities.HoanTien> ?? new();
+    var cancelPreview = ViewBag.CancelPreview as QuanLySanBai.ViewModels.CancelPreviewVM;
+}
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <a asp-action="Index" asp-route-facilityId="@d.CoSoId">← Danh sách đơn</a>
+    @if (Model.Collect && remaining > 0 && d.TrangThai is "CHO_THANH_TOAN" or "DA_XAC_NHAN" or "DANG_SU_DUNG")
+    {
+        <a asp-area="" asp-controller="ThanhToan" asp-action="Index" asp-route-id="@d.Id" class="btn btn-primary btn-sm">Thu tiền quầy (Tiền thừa) / Tạo QR SePay</a>
+    }
+</div>
+<h1 class="mt-3">Đơn @d.MaDatSan</h1>
+<p><span class="status-label">@QuanLySanBai.Services.OrderLabels.Status(d.TrangThai)</span></p>
+<p>@d.TenKhachHang · @d.SdtKhachHang · @(d.NguonDat == "TAI_QUAY" ? "Tại quầy" : "Khách đặt online")</p>
+<div class="card p-3 mb-3">
+    <p>Tổng tiền: <strong>@d.TongTienPhaiTra?.ToString("N2") đ</strong> · Cọc yêu cầu: @d.TienCocYeuCau.ToString("N2") đ</p>
+    <p>Đã thu: <strong>@Model.Paid.ToString("N2") đ</strong> · Còn phải thu: <strong>@remaining.ToString("N2") đ</strong></p>
+    @foreach (var c in d.ChiTietDatSans.OrderByDescending(x => x.TrangThaiSlot != "DA_DOI"))
+    {
+        <p>@c.San.TenSan · @c.NgaySuDung · @c.GioBatDau–@(c.GioKetThuc == TimeOnly.MinValue ? "24:00" : c.GioKetThuc.ToString()) <span class="badge bg-light text-dark border">@c.TrangThaiSlot</span></p>
+    }
+    @if (d.TrangThai == "CHO_THANH_TOAN")
+    {
+        <p>Hạn giữ chỗ (giờ Việt Nam): @d.ThoiGianHetHanGiuCho</p>
+    }
+</div>
+@if (Model.Collect && remaining > 0 && d.TrangThai is "CHO_THANH_TOAN" or "DA_XAC_NHAN" or "DANG_SU_DUNG")
+{
+    <details class="editor-section">
+        <summary>Ghi nhận khoản thu</summary>
+        <p>Chỉ xác nhận sau khi thực tế nhận tiền. Lần đầu phải đủ cọc. Gửi lại cùng yêu cầu không tạo khoản thu thứ hai.</p>
+        <form asp-action="Collect" method="post" data-confirm="Bạn xác nhận đã thực tế nhận khoản tiền này?">
+            <input name="Id" value="@d.Id" type="hidden" />
+            <input name="Version" value="@Model.Version" type="hidden" />
+            <input name="Key" value="@Guid.NewGuid().ToString("N")" type="hidden" />
+            <label>Số tiền <input name="Amount" type="number" min="0.01" max="@remaining.ToString(System.Globalization.CultureInfo.InvariantCulture)" step="0.01" required /></label>
+            <label>Phương thức <select name="Method"><option value="TIEN_MAT">Tiền mặt</option><option value="CHUYEN_KHOAN_TAI_QUAY">Chuyển khoản tại quầy</option></select></label>
+            <label>Mục đích <select name="Purpose"><option value="COC">Tiền cọc</option><option value="THANH_TOAN">Thanh toán</option><option value="BO_SUNG">Thu bổ sung</option></select></label>
+            <label>Mã chuyển khoản (nếu có) <input name="Reference" maxlength="100" /></label>
+            <button class="btn btn-primary">Xác nhận đã nhận tiền</button>
+        </form>
+    </details>
+}
+@if (Model.Collect && d.TrangThai == "CHO_THANH_TOAN" && d.TienCocYeuCau == 0)
+{
+    <form asp-action="Confirm" method="post">
+        <input name="Id" value="@d.Id" type="hidden" />
+        <input name="Version" value="@Model.Version" type="hidden" />
+        <button class="btn btn-primary">Xác nhận đơn không yêu cầu cọc</button>
+    </form>
+}
+@if (Model.CheckIn && d.TrangThai == "DA_XAC_NHAN")
+{
+    <details class="editor-section" open>
+        <summary>Check-in khách (QR / Thủ công)</summary>
+        <div data-qr-scanner class="mt-2">
+            <div class="d-flex gap-2 mb-2 flex-wrap">
+                <button type="button" class="btn btn-success btn-sm" data-qr-start>Quét QR bằng Camera</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm d-none" data-qr-stop>Tắt camera</button>
+            </div>
+            <div class="d-none mb-2" data-qr-video-wrap>
+                <video playsinline muted class="border rounded bg-dark w-100" style="max-width:340px;max-height:260px;object-fit:cover;"></video>
+            </div>
+            <form asp-action="CheckIn" method="post">
+                <input name="Id" value="@d.Id" type="hidden" />
+                <input name="Version" value="@Model.Version" type="hidden" />
+                <label>Mã đặt sân hoặc nội dung mã QR <input name="Code" data-qr-input required maxlength="255" /></label>
+                <button class="btn btn-primary">Check-in</button>
+            </form>
+            <p class="small text-muted mt-2 mb-0" data-qr-status></p>
+        </div>
+    </details>
+}
+@if (Model.CheckIn && d.TrangThai == "DANG_SU_DUNG")
+{
+    <form asp-action="Complete" method="post" data-confirm="Kết thúc buổi sử dụng? Chỉ hoàn thành khi hết giờ và đã thu đủ tiền.">
+        <input name="Id" value="@d.Id" type="hidden" />
+        <input name="Version" value="@Model.Version" type="hidden" />
+        <button class="btn btn-primary">Hoàn thành buổi</button>
+    </form>
+}
+@if (Model.Cancel && Model.Paid == 0 && d.TrangThai is "CHO_THANH_TOAN" or "DA_XAC_NHAN")
+{
+    <details class="editor-section">
+        <summary>Hủy đơn chưa thu tiền</summary>
+        <form asp-action="Cancel" method="post" data-confirm="Hủy đơn và giải phóng khung giờ?">
+            <input name="Id" value="@d.Id" type="hidden" />
+            <input name="Version" value="@Model.Version" type="hidden" />
+            <label>Lý do <input name="Reason" required maxlength="1000" /></label>
+            <button class="btn btn-outline-danger">Hủy đơn</button>
+        </form>
+    </details>
+}
+else if (cancelPreview is not null && d.TrangThai is "CHO_THANH_TOAN" or "DA_XAC_NHAN")
+{
+    <details class="editor-section">
+        <summary>Hủy đơn có hoàn tiền (theo chính sách)</summary>
+        <p class="small text-muted">Đã thu: @cancelPreview.TotalPaid.ToString("N0") đ · Phí phạt (@cancelPreview.PenaltyPercent.ToString("0.##")%): @cancelPreview.PenaltyAmount.ToString("N0") đ · Cần hoàn: <strong>@cancelPreview.RefundAmount.ToString("N0") đ</strong></p>
+        <form asp-action="CancelWithRefund" method="post" data-confirm="Hủy đơn và tạo giao dịch hoàn tiền?">
+            <input name="Id" value="@d.Id" type="hidden" />
+            <input name="Version" value="@Model.Version" type="hidden" />
+            <label>Lý do <input name="Reason" required maxlength="1000" /></label>
+            <button class="btn btn-outline-danger">Hủy đơn &amp; hoàn tiền</button>
+        </form>
+    </details>
+}
+<details class="editor-section">
+    <summary>Lịch sử khoản thu (@d.ThanhToanDons.Count)</summary>
+    @foreach (var p in d.ThanhToanDons.OrderBy(p => p.Id))
+    {
+        <p class="mb-1">
+            @p.NgayThanhToan · <strong>@p.SoTien.ToString("N2") đ</strong> · @p.PhuongThuc · @p.MucDich
+            @if (p.SoTienKhachDua.HasValue)
+            {
+                <span>(Khách đưa: @p.SoTienKhachDua.Value.ToString("N0") đ · Thừa: @(p.TienThua?.ToString("N0") ?? "0") đ)</span>
+            }
+            @(p.NhanVienThuId.HasValue ? $"· người thu #{p.NhanVienThuId}" : "· Tự động (Online)") · mã @p.MaThanhToan
+            @if (p.TrangThai == "THANH_CONG")
+            {
+                <a asp-area="" asp-controller="ThanhToan" asp-action="HoaDon" asp-route-id="@p.Id" class="ms-2">In hóa đơn</a>
+            }
+        </p>
+    }
+</details>
+@if (refunds.Count > 0)
+{
+    <details class="editor-section">
+        <summary>Lịch sử hoàn tiền (@refunds.Count)</summary>
+        @foreach (var r in refunds)
+        {
+            <div class="mb-2">
+                <span>@r.MaHoanTien · @r.SoTien.ToString("N0") đ · @r.PhuongThuc · <strong>@r.TrangThai</strong></span>
+                @if (Model.Collect && r.TrangThai is "KHOI_TAO" or "DANG_XU_LY" or "THAT_BAI" && r.PhuongThuc is "TIEN_MAT" or "CHUYEN_KHOAN_TAI_QUAY")
+                {
+                    <form asp-action="CompleteManualRefund" method="post" class="d-inline-flex gap-1 ms-2">
+                        <input type="hidden" name="orderId" value="@d.Id" />
+                        <input type="hidden" name="refundId" value="@r.Id" />
+                        <input type="text" name="reference" placeholder="Mã CK/Ghi chú" class="form-control form-control-sm" style="width:140px;" />
+                        <button class="btn btn-sm btn-success">Xác nhận đã hoàn</button>
+                    </form>
+                }
+            </div>
+        }
+    </details>
+}
+<details class="editor-section">
+    <summary>Lịch sử sử dụng / hủy</summary>
+    @foreach (var c in d.ChiTietDatSans)
+    {
+        @foreach (var h in c.LichSuCheckIns)
+        {
+            <p>Check-in: @h.ThoiGianCheckin · nhân viên #@h.NhanVienCheckinId · @h.PhuongThuc</p>
+        }
+        @if (c.LichSuHuySan != null)
+        {
+            <p>Hủy: @c.LichSuHuySan.NgayHuy · @c.LichSuHuySan.LyDoHuy · người xử lý #@c.LichSuHuySan.NguoiXuLyId</p>
+        }
+    }
+</details>
+@section Scripts {
+    @if (Model.CheckIn && d.TrangThai == "DA_XAC_NHAN")
+    {
+        <script src="~/lib/jsqr/jsQR.min.js" asp-append-version="true"></script>
+        <script src="~/js/qr-checkin.js" asp-append-version="true"></script>
+    }
+}

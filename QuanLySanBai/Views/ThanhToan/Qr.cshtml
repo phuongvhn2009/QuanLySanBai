@@ -1,0 +1,154 @@
+@model QuanLySanBai.ViewModels.ThanhToanQrVM
+@{
+    ViewData["Title"] = $"Thanh toán QR {Model.PaymentCode}";
+    var remainingSeconds = Math.Max(0, (int)(Model.ExpiresAt - Model.ServerNow).TotalSeconds);
+}
+
+<div class="mb-3">
+    @if (Model.IsWalletDeposit)
+    {
+        <a asp-controller="Wallet" asp-action="Index" class="btn btn-outline-secondary">← Ví của tôi</a>
+    }
+    else if (Model.OrderId.HasValue)
+    {
+        <a asp-controller="Bookings" asp-action="Details" asp-route-id="@Model.OrderId.Value" class="btn btn-outline-secondary">← Chi tiết đơn @Model.MaDatSan</a>
+    }
+</div>
+
+@if (!Model.IsWalletDeposit)
+{
+    <div class="booking-stepper" aria-label="Các bước đặt sân">
+        <span class="booking-step is-done">✓ 1. Chọn khung giờ</span>
+        <span class="booking-step-sep">›</span>
+        <span class="booking-step @(Model.Status == "THANH_CONG" ? "is-done" : "is-active")">@(Model.Status == "THANH_CONG" ? "✓ " : "")2. Thanh toán</span>
+        <span class="booking-step-sep">›</span>
+        <span class="booking-step @(Model.Status == "THANH_CONG" ? "is-active" : "")">3. Nhận QR Check-in</span>
+    </div>
+}
+
+<h1>Chuyển khoản ngân hàng (VietQR)</h1>
+
+@if (!string.IsNullOrEmpty(Model.WarningMessage))
+{
+    <div class="alert alert-warning">@Model.WarningMessage</div>
+}
+
+<div class="card p-4" id="qrCard" data-gateway-id="@Model.GatewayTxId" data-order-id="@Model.OrderId" data-status="@Model.Status">
+    @if (Model.Status == "THANH_CONG")
+    {
+        <div class="alert alert-success">
+            <h2 class="h5 mb-1">Thanh toán đã được xác nhận thành công!</h2>
+            <p class="mb-2">Hệ thống đã tiếp nhận giao dịch từ ngân hàng và cập nhật trạng thái.</p>
+            <div class="d-flex gap-2 flex-wrap">
+                @if (Model.OrderId.HasValue)
+                {
+                    <a asp-controller="Bookings" asp-action="Details" asp-route-id="@Model.OrderId.Value" class="btn btn-success">Xem Mã QR Check-in</a>
+                }
+                @if (Model.PaymentId.HasValue)
+                {
+                    <a asp-action="HoaDon" asp-route-id="@Model.PaymentId.Value" class="btn btn-outline-success">Xem &amp; In hóa đơn</a>
+                }
+                else if (Model.IsWalletDeposit)
+                {
+                    <a asp-controller="Wallet" asp-action="Index" class="btn btn-success">Xem số dư ví</a>
+                }
+            </div>
+        </div>
+    }
+    else if (Model.Status is "THAT_BAI" or "DA_HUY")
+    {
+        <div class="alert alert-danger mb-0">
+            <h2 class="h5 mb-1">Yêu cầu thanh toán này không còn hiệu lực (@Model.Status)</h2>
+            <p class="mb-2">Giao dịch đã bị hủy hoặc không thể khớp đơn đặt. Vui lòng không chuyển khoản theo mã QR này.</p>
+            @if (Model.OrderId.HasValue)
+            {
+                <a asp-controller="Bookings" asp-action="Details" asp-route-id="@Model.OrderId.Value" class="btn btn-outline-danger">Quay lại chi tiết đơn</a>
+            }
+            else if (Model.IsWalletDeposit)
+            {
+                <a asp-controller="Wallet" asp-action="Index" class="btn btn-outline-danger">Quay lại Ví</a>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="row g-4 align-items-center">
+            <div class="col-md-5 text-center">
+                @if (!string.IsNullOrEmpty(Model.QrImageUrl))
+                {
+                    <img src="@Model.QrImageUrl" alt="Mã QR VietQR chuyển khoản @Model.PaymentCode" class="img-fluid border rounded p-2 bg-white" style="max-width:300px;" />
+                }
+                else
+                {
+                    <div class="p-4 border rounded bg-light text-muted">Chưa cấu hình tài khoản ngân hàng để hiển thị ảnh QR.</div>
+                }
+            </div>
+            <div class="col-md-7">
+                <div class="mb-3">
+                    <span class="badge bg-warning text-dark fs-6" id="statusBadge">
+                        @(Model.IsExpired ? "QR đã hết hạn" : "Đang chờ thanh toán...")
+                    </span>
+                </div>
+                <table class="table table-sm mb-3">
+                    <tr><th class="text-muted" style="width:40%;">Ngân hàng</th><td><strong>@Model.BankName (@Model.BankCode)</strong></td></tr>
+                    <tr><th class="text-muted">Số tài khoản</th><td><strong>@(string.IsNullOrEmpty(Model.AccountNumber) ? "(Chưa cấu hình)" : Model.AccountNumber)</strong></td></tr>
+                    <tr><th class="text-muted">Chủ tài khoản</th><td><strong>@(string.IsNullOrEmpty(Model.AccountName) ? "(Chưa cấu hình)" : Model.AccountName)</strong></td></tr>
+                    <tr><th class="text-muted">Số tiền chính xác</th><td><strong class="text-danger fs-5">@Model.Amount.ToString("N0") đ</strong></td></tr>
+                    <tr><th class="text-muted">Nội dung chuyển khoản</th><td><strong class="text-primary fs-5" id="transferContent">@Model.TransferContent</strong> <button type="button" class="btn btn-sm btn-outline-secondary ms-2" onclick="navigator.clipboard?.writeText('@Model.TransferContent'); this.textContent='Đã sao chép!'; setTimeout(() => this.textContent='Sao chép', 1500);">Sao chép</button></td></tr>
+                </table>
+
+                @if (!Model.IsExpired)
+                {
+                    <div class="alert alert-info py-2">
+                        Mã QR còn hiệu lực: <strong id="qrCountdown" data-seconds="@remainingSeconds"></strong>
+                    </div>
+                }
+                else
+                {
+                    <div class="alert alert-warning py-2">
+                        Mã QR đã quá thời hạn hiển thị. Nếu bạn đã chuyển khoản, hệ thống sẽ đối soát tự động khi nhận được webhook từ ngân hàng.
+                    </div>
+                }
+
+                <p class="text-muted small mb-0">Vui lòng giữ nguyên số tiền và nội dung chuyển khoản <strong>@Model.TransferContent</strong>. Trang này sẽ tự động cập nhật ngay khi ngân hàng báo có (không cần tải lại trang).</p>
+            </div>
+        </div>
+    }
+</div>
+
+@section Scripts {
+    <script>
+        (function () {
+            const card = document.getElementById('qrCard');
+            const status = card?.dataset.status;
+            const gatewayId = card?.dataset.gatewayId;
+            const countdownEl = document.getElementById('qrCountdown');
+
+            if (countdownEl) {
+                const deadline = performance.now() + Number(countdownEl.dataset.seconds) * 1000;
+                function tick() {
+                    const left = Math.max(0, Math.ceil((deadline - performance.now()) / 1000));
+                    countdownEl.textContent = left > 0
+                        ? Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0')
+                        : 'Đã hết hạn';
+                }
+                tick();
+                setInterval(tick, 1000);
+            }
+
+            if (status !== 'THANH_CONG' && gatewayId) {
+                setInterval(async () => {
+                    try {
+                        const res = await fetch('/ThanhToan/TrangThai/' + gatewayId, { cache: 'no-store' });
+                        if (res.ok) {
+                            const data = await res.json();
+                            if (data.status === 'THANH_CONG' || data.status !== status) {
+                                location.reload();
+                            }
+                        }
+                    } catch { }
+                }, 5000);
+            }
+        })();
+    </script>
+}

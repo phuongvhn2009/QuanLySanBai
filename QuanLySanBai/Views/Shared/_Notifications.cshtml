@@ -1,6 +1,7 @@
 @{
     // TempData keeps messages through a redirect and consumes them when rendered.
     var successMessage = TempData["SuccessMessage"] as string;
+    var infoMessage = TempData["InfoMessage"] as string;
     var errorMessage = TempData["ErrorMessage"] as string;
 }
 
@@ -10,6 +11,15 @@
         <strong>Thành công:</strong> @successMessage
         <button type="button" class="btn-close" data-bs-dismiss="alert"
                 aria-label="Đóng thông báo thành công"></button>
+    </div>
+}
+
+@if (!string.IsNullOrWhiteSpace(infoMessage))
+{
+    <div class="alert alert-warning alert-dismissible fade show text-break" role="status">
+        <strong>Thông báo:</strong> @infoMessage
+        <button type="button" class="btn-close" data-bs-dismiss="alert"
+                aria-label="Đóng thông báo"></button>
     </div>
 }
 

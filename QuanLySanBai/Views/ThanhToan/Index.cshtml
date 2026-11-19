@@ -1,0 +1,377 @@
+@model QuanLySanBai.ViewModels.TaoThanhToanVM
+@{
+    ViewData["Title"] = $"Thanh toán đơn {Model.MaDatSan}";
+    var remaining = Model.ConPhaiThu;
+    var depositNeeded = Math.Max(0m, Model.TienCocYeuCau - Model.DaThanhToan);
+    var hasSplitDeposit = depositNeeded > 0 && depositNeeded < remaining;
+    var fullPurpose = Model.DaThanhToan > 0 ? "BO_SUNG" : "THANH_TOAN";
+    var defaultPurpose = (Model.TrangThaiDon == "CHO_THANH_TOAN" && hasSplitDeposit) ? "COC" : fullPurpose;
+    var holdSeconds = Model.TrangThaiDon == "CHO_THANH_TOAN" && Model.ThoiGianHetHanGiuCho.HasValue
+        ? Math.Max(0, (int)(Model.ThoiGianHetHanGiuCho.Value - QuanLySanBai.Services.VietnamTime.Now).TotalSeconds)
+        : 0;
+    var isExpired = Model.TrangThaiDon == "CHO_THANH_TOAN" && Model.ThoiGianHetHanGiuCho.HasValue && Model.ThoiGianHetHanGiuCho.Value <= QuanLySanBai.Services.VietnamTime.Now;
+}
+
+<div class="mb-3">
+    @if (Model.IsStaff)
+    {
+        <a asp-area="CoSo" asp-controller="Orders" asp-action="Details" asp-route-id="@Model.OrderId" class="btn btn-outline-secondary btn-sm">← Chi tiết đơn (Quầy)</a>
+    }
+    else
+    {
+        <a asp-controller="Bookings" asp-action="Details" asp-route-id="@Model.OrderId" class="btn btn-outline-secondary btn-sm">← Chi tiết đơn đặt</a>
+    }
+</div>
+
+@if (!Model.IsStaff)
+{
+    <div class="booking-stepper" aria-label="Các bước đặt sân">
+        <span class="booking-step is-done">✓ 1. Chọn khung giờ</span>
+        <span class="booking-step-sep">›</span>
+        <span class="booking-step is-active">2. Thanh toán</span>
+        <span class="booking-step-sep">›</span>
+        <span class="booking-step">3. Nhận QR Check-in</span>
+    </div>
+}
+
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <div>
+        <h1 class="mb-1">Thanh toán đơn @Model.MaDatSan</h1>
+        <p class="text-muted mb-0">@Model.TenCoSo — @Model.TenSan · <strong>@Model.NgaySuDung.ToString("dd/MM/yyyy")</strong> · <strong>@Model.GioBatDau.ToString("HH:mm")–@(Model.GioKetThuc == TimeOnly.MinValue ? "24:00" : Model.GioKetThuc.ToString("HH:mm"))</strong></p>
+    </div>
+    <span class="badge @(Model.TrangThaiDon == "CHO_THANH_TOAN" ? "bg-warning text-dark" : "bg-success") fs-6">
+        @QuanLySanBai.Services.OrderLabels.Status(Model.TrangThaiDon)
+    </span>
+</div>
+
+@if (Model.TrangThaiDon == "CHO_THANH_TOAN" && !isExpired && holdSeconds > 0)
+{
+    <div class="alert alert-info py-2 d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3" role="status">
+        <span>Đơn đang được giữ chỗ đến <strong>@Model.ThoiGianHetHanGiuCho?.ToString("HH:mm dd/MM/yyyy")</strong>. Hoàn tất thanh toán để xác nhận sân.</span>
+        <span>Còn lại: <strong id="holdCountdown" data-seconds="@holdSeconds"></strong></span>
+    </div>
+}
+
+@if (remaining <= 0)
+{
+    <div class="alert alert-success d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <span>Đơn này đã được thanh toán đủ.</span>
+        <a asp-controller="Bookings" asp-action="Details" asp-route-id="@Model.OrderId" class="btn btn-success btn-sm">Xem mã QR Check-in</a>
+    </div>
+}
+else if (isExpired)
+{
+    <div class="alert alert-danger">Đơn này đã quá hạn giữ chỗ. Vui lòng quay lại lịch sân để đặt lại.</div>
+}
+else
+{
+    <div class="row g-4">
+        <div class="col-lg-7">
+            <div class="card p-4" id="checkoutPanel"
+                 data-deposit="@depositNeeded.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+                 data-remaining="@remaining.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+                 data-full-purpose="@fullPurpose"
+                 data-wallet="@Model.SoDuViKhaDung.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+                 data-has-split="@hasSplitDeposit.ToString().ToLowerInvariant()">
+
+                @if (hasSplitDeposit)
+                {
+                    <div class="mb-4" id="coScopeSection">
+                        <h2 class="h6 fw-bold mb-2">1. Chọn khoản muốn thanh toán</h2>
+                        <div class="row g-2">
+                            <div class="col-sm-6">
+                                <label class="choice-card @(defaultPurpose == "COC" ? "is-selected" : "")">
+                                    <input type="radio" name="coPurpose" value="COC" checked="@(defaultPurpose == "COC")" />
+                                    <div>
+                                        <div class="fw-bold">Đóng tiền cọc</div>
+                                        <div class="text-primary fw-bold">@depositNeeded.ToString("N0") đ</div>
+                                        <div class="small text-muted">Đủ xác nhận giữ sân ngay</div>
+                                    </div>
+                                </label>
+                            </div>
+                            <div class="col-sm-6">
+                                <label class="choice-card @(defaultPurpose != "COC" ? "is-selected" : "")">
+                                    <input type="radio" name="coPurpose" value="@fullPurpose" checked="@(defaultPurpose != "COC")" />
+                                    <div>
+                                        <div class="fw-bold">Thanh toán đủ 100%</div>
+                                        <div class="text-success fw-bold">@remaining.ToString("N0") đ</div>
+                                        <div class="small text-muted">Không cần trả thêm tại sân</div>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                }
+
+                <div class="mb-3">
+                    <h2 class="h6 fw-bold mb-2">@(hasSplitDeposit ? "2. Chọn phương thức thanh toán" : "Chọn phương thức thanh toán")</h2>
+                    @if (!Model.SePayConfigured)
+                    {
+                        <div class="alert alert-warning py-2 small">Lưu ý: Chưa cấu hình số tài khoản MB Bank nhận tiền trong hệ thống (SePay:AccountNumber).</div>
+                    }
+                    <div class="d-grid gap-2">
+                        <label class="choice-card is-selected">
+                            <input type="radio" name="coMethod" value="QR" checked />
+                            <div class="flex-grow-1">
+                                <div class="d-flex justify-content-between align-items-center flex-wrap gap-1">
+                                    <strong>Chuyển khoản ngân hàng (VietQR)</strong>
+                                    <span class="badge bg-primary-subtle text-primary border">Khuyên dùng · Tự động</span>
+                                </div>
+                                <div class="small text-muted">Quét mã VietQR trên ứng dụng ngân hàng; hệ thống tự động xác nhận ngay khi nhận được tiền.</div>
+                            </div>
+                        </label>
+
+                        @if (Model.SoDuViKhaDung > 0 || !Model.IsStaff)
+                        {
+                            <label class="choice-card">
+                                <input type="radio" name="coMethod" value="VI" />
+                                <div class="flex-grow-1">
+                                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-1">
+                                        <strong>Ví điện tử (Số dư: @Model.SoDuViKhaDung.ToString("N0") đ)</strong>
+                                        <span class="badge" id="coWalletBadge"></span>
+                                    </div>
+                                    <div class="small text-muted" id="coWalletHint">Trừ trực tiếp từ ví. Nếu không đủ, hệ thống tự động chuyển sang tạo mã VietQR.</div>
+                                </div>
+                            </label>
+                        }
+
+                        @if (!Model.CanCollectCash && Model.TrangThaiDon == "CHO_THANH_TOAN")
+                        {
+                            <label class="choice-card">
+                                <input type="radio" name="coMethod" value="QUAY" />
+                                <div class="flex-grow-1">
+                                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-1">
+                                        <strong>Trả tiền mặt hoặc chuyển khoản tại quầy</strong>
+                                        <span class="badge bg-light text-dark border">Giữ chỗ đến @Model.ThoiGianHetHanGiuCho?.ToString("HH:mm")</span>
+                                    </div>
+                                    <div class="small text-muted">Đến quầy của <strong>@Model.TenCoSo</strong> thanh toán trực tiếp trước hạn giữ chỗ.</div>
+                                </div>
+                            </label>
+                        }
+                    </div>
+                </div>
+
+                <!-- Hidden real forms so both endpoints & antiforgery tokens stay clean and standard -->
+                <form asp-action="TaoQr" method="post" id="qrPayForm">
+                    <input type="hidden" name="OrderId" value="@Model.OrderId" />
+                    <input type="hidden" name="Purpose" id="qrPurposeInput" value="@defaultPurpose" />
+                    <button type="submit" class="btn btn-primary w-100" id="qrSubmitBtn">Tạo mã VietQR thanh toán</button>
+                </form>
+
+                @if (Model.SoDuViKhaDung > 0 || !Model.IsStaff)
+                {
+                    <form asp-action="ThanhToanVi" method="post" id="walletPayForm" class="d-none">
+                        <input type="hidden" name="OrderId" value="@Model.OrderId" />
+                        <input type="hidden" name="Version" value="@Model.Version" />
+                        <input type="hidden" name="Key" value="@Guid.NewGuid().ToString("N")" />
+                        <input type="hidden" name="Purpose" id="walletPurposeInput" value="@defaultPurpose" />
+                        <button type="submit" class="btn btn-success w-100 mb-2" id="walletSubmitBtn">Thanh toán bằng Ví</button>
+                        <a asp-controller="Wallet" asp-action="Index" class="btn btn-outline-secondary btn-sm w-100">Nạp thêm tiền vào ví</a>
+                    </form>
+                }
+
+                @if (!Model.CanCollectCash && Model.TrangThaiDon == "CHO_THANH_TOAN")
+                {
+                    <div id="counterPayBox" class="d-none">
+                        <div class="alert alert-light border small mb-2">
+                            Đơn đang được giữ chỗ đến <strong>@Model.ThoiGianHetHanGiuCho?.ToString("HH:mm dd/MM/yyyy")</strong>. Vui lòng đọc mã đơn <strong>@Model.MaDatSan</strong> tại quầy để nhân viên thu tiền và xác nhận.
+                        </div>
+                        <a asp-controller="Bookings" asp-action="Details" asp-route-id="@Model.OrderId" class="btn btn-outline-primary w-100">Giữ đơn &amp; Quay lại chi tiết đơn</a>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <div class="col-lg-5">
+            <div class="card p-4">
+                <h2 class="h6 fw-bold mb-3">Tóm tắt chi phí</h2>
+                <div class="d-flex justify-content-between mb-2 small">
+                    <span class="text-muted">Tiền sân</span>
+                    <span>@Model.TongTienSan.ToString("N0") đ</span>
+                </div>
+                @if (Model.TongPhiPhat > 0)
+                {
+                    <div class="d-flex justify-content-between mb-2 small">
+                        <span class="text-muted">Phí phát sinh / đổi lịch</span>
+                        <span>@Model.TongPhiPhat.ToString("N0") đ</span>
+                    </div>
+                }
+                @if (Model.TienGiamGia > 0)
+                {
+                    <div class="d-flex justify-content-between mb-2 small text-success">
+                        <span>Giảm giá</span>
+                        <span>-@Model.TienGiamGia.ToString("N0") đ</span>
+                    </div>
+                }
+                <div class="d-flex justify-content-between mb-2 small">
+                    <span class="text-muted">Đã thanh toán</span>
+                    <span class="text-success">@Model.DaThanhToan.ToString("N0") đ</span>
+                </div>
+                <hr class="my-2" />
+                <div class="d-flex justify-content-between align-items-baseline mb-1">
+                    <span class="fw-semibold">Còn phải thanh toán</span>
+                    <strong class="text-danger fs-5">@remaining.ToString("N0") đ</strong>
+                </div>
+                @if (hasSplitDeposit)
+                {
+                    <div class="d-flex justify-content-between small text-muted">
+                        <span>Cọc tối thiểu để giữ sân</span>
+                        <strong>@depositNeeded.ToString("N0") đ</strong>
+                    </div>
+                }
+                <div class="mt-3 pt-3 border-top small text-muted">
+                    <div>Sau khi thanh toán thành công, <strong>Mã QR Check-in</strong> sẽ tự động hiển thị trong trang chi tiết đơn của bạn.</div>
+                </div>
+            </div>
+        </div>
+
+        @if (Model.CanCollectCash)
+        {
+            <div class="col-12">
+                <div class="card p-4 border-primary">
+                    <h2 class="h5 mb-3">Thu tiền mặt tại quầy (Dành cho nhân viên)</h2>
+                    <form asp-action="TienMat" method="post" id="cashForm" data-confirm="Xác nhận đã nhận đủ tiền mặt từ khách hàng?">
+                        <input type="hidden" name="OrderId" value="@Model.OrderId" />
+                        <input type="hidden" name="Version" value="@Model.Version" />
+                        <input type="hidden" name="Key" value="@Guid.NewGuid().ToString("N")" />
+                        <div class="row g-3 align-items-end">
+                            <div class="col-md-3">
+                                <label class="form-label">Mục đích thu</label>
+                                <select name="Purpose" class="form-select">
+                                    @if (depositNeeded > 0)
+                                    {
+                                        <option value="COC">Thu cọc</option>
+                                    }
+                                    <option value="THANH_TOAN" selected="@(depositNeeded == 0)">Thanh toán</option>
+                                    <option value="BO_SUNG">Thu bổ sung</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Số tiền cần thu (đ)</label>
+                                <input type="number" step="0.01" min="0.01" max="@remaining.ToString(System.Globalization.CultureInfo.InvariantCulture)" name="Amount" id="cashAmount" value="@remaining.ToString(System.Globalization.CultureInfo.InvariantCulture)" class="form-control" required />
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Tiền khách đưa (đ)</label>
+                                <input type="number" step="0.01" min="0.01" name="CashReceived" id="cashReceived" value="@remaining.ToString(System.Globalization.CultureInfo.InvariantCulture)" class="form-control" required />
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Tiền thừa trả khách</label>
+                                <div class="form-control bg-light fw-bold text-success" id="cashChangeDisplay">0 đ</div>
+                            </div>
+                        </div>
+                        <div class="mt-3">
+                            <button type="submit" class="btn btn-primary" id="cashSubmitBtn">Xác nhận thu tiền mặt &amp; In hóa đơn</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@section Scripts {
+    <script>
+        (() => {
+            const countdownEl = document.getElementById('holdCountdown');
+            if (countdownEl) {
+                const deadline = performance.now() + Number(countdownEl.dataset.seconds) * 1000;
+                function tick() {
+                    const left = Math.max(0, Math.ceil((deadline - performance.now()) / 1000));
+                    countdownEl.textContent = left > 0
+                        ? Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0')
+                        : 'Đã hết hạn';
+                }
+                tick();
+                setInterval(tick, 1000);
+            }
+
+            const panel = document.getElementById('checkoutPanel');
+            if (panel) {
+                const deposit = Number(panel.dataset.deposit || 0);
+                const remaining = Number(panel.dataset.remaining || 0);
+                const fullPurpose = panel.dataset.fullPurpose || 'THANH_TOAN';
+                const wallet = Number(panel.dataset.wallet || 0);
+                const hasSplit = panel.dataset.hasSplit === 'true';
+
+                const qrForm = document.getElementById('qrPayForm');
+                const qrPurpose = document.getElementById('qrPurposeInput');
+                const qrBtn = document.getElementById('qrSubmitBtn');
+                const walletForm = document.getElementById('walletPayForm');
+                const walletPurpose = document.getElementById('walletPurposeInput');
+                const walletBtn = document.getElementById('walletSubmitBtn');
+                const walletBadge = document.getElementById('coWalletBadge');
+                const walletHint = document.getElementById('coWalletHint');
+                const counterBox = document.getElementById('counterPayBox');
+                const scopeSection = document.getElementById('coScopeSection');
+
+                const fmt = n => Math.round(n).toLocaleString('vi-VN') + ' đ';
+
+                function syncCheckout() {
+                    const method = panel.querySelector('input[name="coMethod"]:checked')?.value || 'QR';
+                    const purpose = hasSplit
+                        ? (panel.querySelector('input[name="coPurpose"]:checked')?.value || 'COC')
+                        : fullPurpose;
+                    const due = purpose === 'COC' ? deposit : remaining;
+                    const enough = wallet >= due;
+
+                    panel.querySelectorAll('.choice-card').forEach(card => {
+                        const r = card.querySelector('input[type="radio"]');
+                        card.classList.toggle('is-selected', Boolean(r && r.checked));
+                    });
+
+                    if (scopeSection) scopeSection.classList.toggle('d-none', method === 'QUAY');
+                    if (qrPurpose) qrPurpose.value = purpose;
+                    if (walletPurpose) walletPurpose.value = purpose;
+
+                    if (qrBtn) qrBtn.textContent = 'Tạo mã VietQR thanh toán (' + fmt(due) + ')';
+                    if (walletBadge && walletHint) {
+                        walletBadge.className = enough
+                            ? 'badge bg-success-subtle text-success border'
+                            : 'badge bg-warning-subtle text-warning-emphasis border';
+                        walletBadge.textContent = enough ? 'Đủ số dư' : 'Không đủ — tự tạo VietQR';
+                        walletHint.textContent = enough
+                            ? 'Trừ ngay ' + fmt(due) + ' từ số dư ví của bạn.'
+                            : 'Ví thiếu ' + fmt(due - wallet) + ' — bấm tiếp tục để tự động tạo mã VietQR ' + fmt(due) + '.';
+                    }
+                    if (walletBtn) {
+                        walletBtn.className = enough ? 'btn btn-success w-100 mb-2' : 'btn btn-primary w-100 mb-2';
+                        walletBtn.textContent = enough
+                            ? 'Thanh toán ngay bằng Ví (' + fmt(due) + ')'
+                            : 'Tạo mã VietQR thay thế (' + fmt(due) + ')';
+                    }
+
+                    qrForm?.classList.toggle('d-none', method !== 'QR');
+                    walletForm?.classList.toggle('d-none', method !== 'VI');
+                    counterBox?.classList.toggle('d-none', method !== 'QUAY');
+                }
+
+                panel.addEventListener('change', syncCheckout);
+                syncCheckout();
+            }
+
+            const amountEl = document.getElementById('cashAmount');
+            const receivedEl = document.getElementById('cashReceived');
+            const changeEl = document.getElementById('cashChangeDisplay');
+            const submitBtn = document.getElementById('cashSubmitBtn');
+
+            function updateChange() {
+                if (!amountEl || !receivedEl || !changeEl) return;
+                const amt = parseFloat(amountEl.value) || 0;
+                const rec = parseFloat(receivedEl.value) || 0;
+                const diff = rec - amt;
+                if (diff < 0) {
+                    changeEl.textContent = 'Chưa đủ (' + diff.toLocaleString('vi-VN') + ' đ)';
+                    changeEl.className = 'form-control bg-light fw-bold text-danger';
+                    if (submitBtn) submitBtn.disabled = true;
+                } else {
+                    changeEl.textContent = diff.toLocaleString('vi-VN') + ' đ';
+                    changeEl.className = 'form-control bg-light fw-bold text-success';
+                    if (submitBtn) submitBtn.disabled = false;
+                }
+            }
+            amountEl?.addEventListener('input', updateChange);
+            receivedEl?.addEventListener('input', updateChange);
+            updateChange();
+        })();
+    </script>
+}

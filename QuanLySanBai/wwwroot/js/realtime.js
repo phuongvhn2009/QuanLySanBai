@@ -2,6 +2,10 @@
     if (!window.signalR) return;
     const courtId = location.pathname.match(/^\/Courts\/Details\/(\d+)/i)?.[1]
         || (/^\/Courts\/Details$/i.test(location.pathname) ? new URLSearchParams(location.search).get('id') : null);
+    const qrOrderId = document.getElementById('qrCard')?.dataset.orderId;
+    const orderId = qrOrderId
+        || location.pathname.match(/^\/(?:Bookings|CoSo\/Orders)\/Details\/(\d+)/i)?.[1]
+        || (/^\/(?:Bookings|CoSo\/Orders)\/Details$/i.test(location.pathname) ? new URLSearchParams(location.search).get('id') : null);
     const signedIn = document.body.dataset.signedIn === 'true';
     if (!signedIn && !courtId) return;
     const connection = new signalR.HubConnectionBuilder().withUrl('/updates').withAutomaticReconnect().build();
@@ -30,12 +34,14 @@
     }
     connection.on('PermissionsChanged', () => refresh(true));
     connection.on('CalendarChanged', () => refresh());
+    connection.on('PaymentChanged', () => refresh(true));
     connection.onreconnected(() => refresh());
     connection.onclose(() => setTimeout(start, 5000));
     async function start() {
         try {
             await connection.start();
             if (courtId) await connection.invoke('WatchCourt', Number(courtId));
+            if (signedIn && orderId) await connection.invoke('WatchOrder', Number(orderId));
             if (connectedBefore) refresh();
             connectedBefore = true;
         } catch { if (connection.state === signalR.HubConnectionState.Disconnected) setTimeout(start, 5000); }

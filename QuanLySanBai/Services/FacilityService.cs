@@ -62,19 +62,80 @@ public class FacilityService(QuanLySanBaiContext db, RealtimeUpdates? updates = 
         db.KhungGioMacDinhs.Add(new KhungGioMacDinh { CoSoId = form.FacilityId, GioBatDau = form.Start, GioKetThuc = form.End });
         await db.SaveChangesAsync();
     }
+    public async Task<CoSo> RequirePriceAccess(long actor, long id)
+    {
+        var c = await db.CoSos.SingleOrDefaultAsync(x => x.Id == id && x.TrangThaiDuyet == "DA_DUYET");
+        if (c is null) throw new FacilityAccessException();
+        if (c.ChuSoHuuId == actor) return c;
+        if (await new AccessService(db).HasPermission(actor, id, "QUAN_LY_GIA")) return c;
+        throw new FacilityAccessException();
+    }
+
+    public static string WeekdayName(int weekday) => weekday switch
+    {
+        1 => "Thứ Hai",
+        2 => "Thứ Ba",
+        3 => "Thứ Tư",
+        4 => "Thứ Năm",
+        5 => "Thứ Sáu",
+        6 => "Thứ Bảy",
+        7 => "Chủ Nhật",
+        _ => $"Thứ {weekday}"
+    };
+
+    private static bool RangeContainsWeekday(DateOnly from, DateOnly until, int weekday)
+    {
+        for (var d = from; d <= until && d <= from.AddDays(7); d = d.AddDays(1))
+            if (VietnamTime.Weekday(d) == weekday)
+                return true;
+        return false;
+    }
+
     public async Task AddPrice(long actor, PriceForm form)
     {
-        await Owned(actor, form.FacilityId);
+        await RequirePriceAccess(actor, form.FacilityId);
         if (!await db.Sans.AnyAsync(s => s.Id == form.CourtId && s.CoSoId == form.FacilityId) || !await db.KhungGioMacDinhs.AnyAsync(k => k.Id == form.SlotId && k.CoSoId == form.FacilityId)) throw new FacilityAccessException();
-        if (form.Weekday is < 1 or > 7 || form.Price < 0 || form.Deposit < 0 || form.Deposit > form.Price || form.Until < form.From || decimal.Round(form.Price,2)!=form.Price || decimal.Round(form.Deposit,2)!=form.Deposit) throw new BusinessException("Giá, cọc, thứ hoặc ngày hiệu lực không hợp lệ. Tiền có tối đa hai chữ số thập phân.");
-        db.BangGia.Add(new BangGium { SanId = form.CourtId, KhungGioId = form.SlotId, GiaThue = form.Price, TienCocToiThieu = form.Deposit, ThuTrongTuan = form.Weekday, NgayHieuLucTu = form.From, NgayHieuLucDen = form.Until, DangApDung = true });
+
+        var targets = form.Weekdays is { Count: > 0 } ? form.Weekdays.Distinct().ToList() : [form.Weekday];
+        if (targets.Any(w => w is < 1 or > 7) || form.Price < 0 || form.Deposit < 0 || form.Deposit > form.Price || form.Until < form.From || decimal.Round(form.Price,2)!=form.Price || decimal.Round(form.Deposit,2)!=form.Deposit)
+            throw new BusinessException("Giá, cọc, thứ hoặc ngày hiệu lực không hợp lệ. Tiền có tối đa hai chữ số thập phân.");
+
+        if (form.Until.HasValue)
+        {
+            var matched = targets.Where(w => RangeContainsWeekday(form.From, form.Until.Value, w)).ToList();
+            if (matched.Count == 0)
+                throw new BusinessException($"Khoảng ngày {form.From:dd/MM/yyyy}–{form.Until.Value:dd/MM/yyyy} không có ngày {string.Join(", ", targets.Select(WeekdayName))}. Hãy chọn đúng thứ trong khoảng ngày đó.");
+            if (form.Weekdays is { Count: > 0 })
+                targets = matched;
+        }
+
+        await using var tx = await db.Database.BeginTransactionAsync();
+        if (form.ReplaceExisting)
+        {
+            var maxEnd = form.Until ?? new DateOnly(9999, 12, 31);
+            var overlapping = await db.BangGia
+                .Where(g => g.SanId == form.CourtId && g.KhungGioId == form.SlotId && targets.Contains(g.ThuTrongTuan) && g.DangApDung &&
+                            g.NgayHieuLucTu <= maxEnd && (g.NgayHieuLucDen == null || g.NgayHieuLucDen >= form.From))
+                .ToListAsync();
+            foreach (var old in overlapping)
+                old.DangApDung = false;
+            if (overlapping.Count > 0)
+                await db.SaveChangesAsync();
+        }
+
+        foreach (var weekday in targets)
+            db.BangGia.Add(new BangGium { SanId = form.CourtId, KhungGioId = form.SlotId, GiaThue = form.Price, TienCocToiThieu = form.Deposit, ThuTrongTuan = weekday, NgayHieuLucTu = form.From, NgayHieuLucDen = form.Until, DangApDung = true });
+
         await db.SaveChangesAsync();
+        await tx.CommitAsync();
+        if (updates is not null) await updates.Calendar(form.CourtId);
     }
     public async Task StopPrice(long actor, long facilityId, long id)
     {
-        await Owned(actor, facilityId);
+        await RequirePriceAccess(actor, facilityId);
         var price = await db.BangGia.SingleOrDefaultAsync(p => p.Id == id && p.San.CoSoId == facilityId) ?? throw new FacilityAccessException();
         price.DangApDung = false; await db.SaveChangesAsync();
+        if (updates is not null) await updates.Calendar(price.SanId);
     }
     public static void ValidateFees(List<FeeForm> fees)
     {
@@ -117,6 +178,44 @@ public class FacilityService(QuanLySanBaiContext db, RealtimeUpdates? updates = 
     }
     public async Task<FacilityDashboard> Dashboard(long actor, long id)
     {
-        return new FacilityDashboard { Facility = await Owned(actor,id), Courts = await db.Sans.Where(s=>s.CoSoId==id).Include(s=>s.LoaiSan).ToListAsync(), Slots=await db.KhungGioMacDinhs.Where(s=>s.CoSoId==id).OrderBy(s=>s.GioBatDau).ToListAsync(), Hours=await db.LichHoatDongCoSos.Where(h=>h.CoSoId==id).OrderBy(h=>h.ThuTrongTuan).ToListAsync(), Prices=await db.BangGia.Where(p=>p.San.CoSoId==id).Include(p=>p.KhungGio).Include(p=>p.San).ToListAsync(), Policies=await db.ChinhSachHuyDois.Where(p=>p.CoSoId==id).Include(p=>p.MucPhiHuyDois).ToListAsync(), Locks=await db.LichKhoaSans.Where(l=>l.San.CoSoId==id).Include(l=>l.San).ToListAsync() };
+        var facility = await RequirePriceAccess(actor, id);
+        var isOwner = facility.ChuSoHuuId == actor;
+        var courts = await db.Sans.Where(s => s.CoSoId == id).Include(s => s.LoaiSan).ToListAsync();
+        var slots = await db.KhungGioMacDinhs.Where(s => s.CoSoId == id).OrderBy(s => s.GioBatDau).ToListAsync();
+        var hours = await db.LichHoatDongCoSos.Where(h => h.CoSoId == id).OrderBy(h => h.ThuTrongTuan).ToListAsync();
+        var prices = await db.BangGia.Where(p => p.San.CoSoId == id).Include(p => p.KhungGio).Include(p => p.San).ToListAsync();
+        var policies = await db.ChinhSachHuyDois.Where(p => p.CoSoId == id).Include(p => p.MucPhiHuyDois).ToListAsync();
+        var locks = await db.LichKhoaSans.Where(l => l.San.CoSoId == id).Include(l => l.San).ToListAsync();
+
+        var today = VietnamTime.Today;
+        var todayWeekday = VietnamTime.Weekday(today);
+        var warnings = new List<string>();
+        if (!courts.Any(s => s.DangHoatDong && !s.DangBaoTri))
+            warnings.Add("Chưa có sân đang hoạt động để khách đặt.");
+        if (slots.Count == 0)
+            warnings.Add("Chưa cấu hình khung giờ mặc định.");
+        if (!policies.Any(p => p.NgayHieuLucTu <= today && (p.NgayHieuLucDen == null || p.NgayHieuLucDen >= today)))
+            warnings.Add("Chưa có Chính sách hủy/đổi hiệu lực hôm nay (khách hàng sẽ thấy 'Chưa đủ chính sách' và không thể đặt).");
+
+        foreach (var court in courts.Where(s => s.DangHoatDong && !s.DangBaoTri))
+        {
+            var hasTodayPrice = prices.Any(p => p.SanId == court.Id && p.DangApDung && p.ThuTrongTuan == todayWeekday && p.NgayHieuLucTu <= today && (p.NgayHieuLucDen == null || p.NgayHieuLucDen >= today));
+            if (!hasTodayPrice && slots.Count > 0)
+                warnings.Add($"Sân '{court.TenSan}' chưa có bảng giá áp dụng cho hôm nay ({WeekdayName(todayWeekday)}, {today:dd/MM/yyyy}).");
+        }
+
+        return new FacilityDashboard
+        {
+            Facility = facility,
+            IsOwner = isOwner,
+            CanManagePrices = true,
+            ReadinessWarnings = warnings,
+            Courts = courts,
+            Slots = slots,
+            Hours = hours,
+            Prices = prices,
+            Policies = policies,
+            Locks = locks
+        };
     }
 }

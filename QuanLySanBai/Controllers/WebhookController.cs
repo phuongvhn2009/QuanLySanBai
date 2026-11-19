@@ -1,0 +1,46 @@
+using System.Text;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using QuanLySanBai.Services;
+
+namespace QuanLySanBai.Controllers;
+
+[ApiController]
+[Route("api/webhook")]
+[AllowAnonymous]
+[IgnoreAntiforgeryToken]
+public class WebhookController(WebhookService webhookService) : ControllerBase
+{
+    [HttpGet("sepay")]
+    public IActionResult Ping()
+    {
+        return Ok(new
+        {
+            service = "QuanLySanBai SePay Webhook Listener",
+            status = "Online",
+            domain = "quanlysanbai-nhatphuong.xyz",
+            method = "POST",
+            message = "Webhook endpoint is active and listening for incoming SePay bank transactions."
+        });
+    }
+
+    [HttpPost("sepay")]
+    [RequestSizeLimit(65_536)]
+    public async Task<IActionResult> SePay()
+    {
+        if (Request.ContentLength > 65_536)
+            return StatusCode(413, new { success = false, status = "LOI_XU_LY", message = "Payload too large" });
+
+        using var reader = new StreamReader(Request.Body, Encoding.UTF8);
+        var rawBody = await reader.ReadToEndAsync();
+        var authHeader = Request.Headers["Authorization"].FirstOrDefault();
+
+        var result = await webhookService.ProcessSePayWebhook(rawBody, authHeader);
+        return StatusCode(result.StatusCode, new
+        {
+            success = result.Success,
+            status = result.ProcessingStatus,
+            message = result.Message
+        });
+    }
+}

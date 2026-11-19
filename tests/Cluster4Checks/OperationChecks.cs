@@ -60,6 +60,16 @@ public static class OperationChecks
  await Reject(()=>Invoke(s=>s.Counter(other,new(){FacilityId=facility,CourtId=court,SlotId=slot,Date=VietnamTime.Today.AddDays(14),Name="Walk-in",Phone="0988776655"})),"O01: unauthorized counter booking denied");
  long counter=0;await Invoke(async s=>counter=await s.Counter(owner,new(){FacilityId=facility,CourtId=court,SlotId=slot,Date=VietnamTime.Today.AddDays(14),Name="Walk-in",Phone="0988776655"}));
  d=await Read(counter);Check(d.NguonDat=="TAI_QUAY" && d.NhanVienTaoId==owner && d.NguoiDungId==null,"O01: walk-in identity and staff recorded");
+ var qrOrderId=await Book(16);var qrPay=await Form(qrOrderId,50000.25m);await Invoke(s=>s.Collect(owner,qrPay));
+ var qrOrder=await Read(qrOrderId);var qrSlot=qrOrder.ChiTietDatSans.Single();
+ var qrStart=VietnamTime.Start(qrSlot.NgaySuDung,qrSlot.GioBatDau);
+ await Reject(()=>Invoke(s=>s.CheckInByCode(other,facility,qrOrder.MaQrCheckin),qrStart),"O04 QR: unauthorized user cannot scan check-in");
+ await Reject(()=>Invoke(s=>s.CheckInByCode(owner,facility+99999,qrOrder.MaQrCheckin),qrStart),"O04 QR: foreign facility cannot scan check-in");
+ await Reject(()=>Invoke(s=>s.CheckInByCode(owner,facility,"NO-SUCH-QR-CODE"),qrStart),"O04 QR: invalid QR code rejected");
+ long scannedId=0;await Invoke(async s=>scannedId=await s.CheckInByCode(owner,facility,qrOrder.MaQrCheckin),qrStart.AddMinutes(-5));
+ Check(scannedId==qrOrderId && (await Read(qrOrderId)).TrangThai=="DANG_SU_DUNG","O04 QR: CheckInByCode matches MaQrCheckin and checks in");
+ await using(var db=new QuanLySanBaiContext(options)){Check(await db.LichSuCheckIns.AnyAsync(h=>h.ChiTietDatSanId==qrSlot.Id && h.PhuongThuc=="QR"),"O04 QR: history records QR method");}
+ await Reject(()=>Invoke(s=>s.CheckInByCode(owner,facility,qrOrder.MaQrCheckin),qrStart),"O04 QR: repeat QR scan rejected");
  return count;
  }
  private sealed class FixedClock(DateTime vn):TimeProvider {public override DateTimeOffset GetUtcNow()=>new(DateTime.SpecifyKind(vn.AddHours(-7),DateTimeKind.Utc));}

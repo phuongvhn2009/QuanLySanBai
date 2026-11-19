@@ -1,0 +1,178 @@
+@model QuanLySanBai.ViewModels.WalletIndexVM
+@{
+    ViewData["Title"] = "Ví điện tử của tôi";
+}
+
+<div class="page-heading">
+    <div>
+        <p class="eyebrow">TÀI CHÍNH CÁ NHÂN</p>
+        <h1>Ví điện tử</h1>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-6">
+        <div class="card p-4 h-100">
+            <h2 class="h5 text-muted">Số dư khả dụng</h2>
+            <p class="display-6 fw-bold text-success mb-1">@Model.Wallet.SoDuKhaDung.ToString("N0") đ</p>
+            <p class="mb-0 text-muted small">Số dư đang tạm giữ (chờ duyệt rút): <strong>@Model.Wallet.SoDuDongBang.ToString("N0") đ</strong> · Trạng thái ví: @Model.Wallet.TrangThai</p>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card p-4 h-100">
+            <h2 class="h5">Nạp tiền qua VietQR (SePay)</h2>
+            @if (!Model.SePayConfigured)
+            {
+                <p class="text-warning small mb-2">Chưa cấu hình thông tin tài khoản MB Bank nhận tiền (SePay:AccountNumber).</p>
+            }
+            <form asp-action="NapTien" method="post" class="d-flex gap-2 align-items-end flex-wrap">
+                <label class="flex-grow-1 mb-0">
+                    Số tiền muốn nạp (đ)
+                    <input type="number" name="Amount" min="1000" max="100000000" step="1000" value="100000" class="form-control" required />
+                </label>
+                <button type="submit" class="btn btn-primary">Tạo mã QR nạp ví</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+@if (Model.CanWithdraw)
+{
+    <details class="editor-section mb-4">
+        <summary>Yêu cầu rút tiền về tài khoản ngân hàng (Dành cho Chủ sân)</summary>
+        <form asp-action="RutTien" method="post" class="mt-3 row g-3" data-confirm="Xác nhận tạo yêu cầu rút tiền? Số tiền yêu cầu sẽ được tạm đóng băng chờ Admin duyệt.">
+            <div class="col-md-3">
+                <label class="form-label w-100">Số tiền rút (đ)
+                    <input type="number" name="Amount" min="10000" max="@Model.Wallet.SoDuKhaDung.ToString(System.Globalization.CultureInfo.InvariantCulture)" step="1000" class="form-control" required />
+                </label>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label w-100">Ngân hàng
+                    <select name="BankName" class="form-select" required>
+                        <option value="MBBank">MB Bank (MBBank)</option>
+                        <option value="VCB">Vietcombank (VCB)</option>
+                        <option value="TCB">Techcombank (TCB)</option>
+                        <option value="ICB">VietinBank (ICB)</option>
+                        <option value="BIDV">BIDV</option>
+                        <option value="ACB">ACB</option>
+                        <option value="VPB">VPBank (VPB)</option>
+                        <option value="TPB">TPBank (TPB)</option>
+                        <option value="STB">Sacombank (STB)</option>
+                    </select>
+                </label>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label w-100">Số tài khoản
+                    <input type="text" name="AccountNumber" maxlength="50" class="form-control" required />
+                </label>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label w-100">Tên chủ tài khoản
+                    <input type="text" name="AccountHolder" maxlength="100" class="form-control" required />
+                </label>
+            </div>
+            <div class="col-12">
+                <button type="submit" class="btn btn-outline-primary">Gửi yêu cầu rút tiền</button>
+            </div>
+        </form>
+    </details>
+}
+else
+{
+    <div class="alert alert-secondary mb-4 small">
+        Tính năng rút tiền về tài khoản ngân hàng hiện chỉ dành cho Chủ sân. Số dư ví của khách hàng được dùng để đặt sân và nhận tiền hoàn tự động.
+    </div>
+}
+
+<div class="card p-3 mb-4">
+    <h2 class="h5">Lịch sử biến động số dư (Sổ cái bất biến)</h2>
+    @if (Model.Transactions.Count == 0)
+    {
+        <p class="text-muted mb-0">Chưa có giao dịch ví nào.</p>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Thời gian</th>
+                        <th>Loại</th>
+                        <th class="text-end">Số tiền</th>
+                        <th class="text-end">Trước GD</th>
+                        <th class="text-end">Sau GD</th>
+                        <th>Nội dung</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var t in Model.Transactions)
+                    {
+                        <tr>
+                            <td>@t.NgayTao.ToString("dd/MM/yyyy HH:mm")</td>
+                            <td><span class="badge bg-secondary">@t.LoaiGiaoDich</span></td>
+                            <td class="text-end fw-bold">@t.SoTien.ToString("N0") đ</td>
+                            <td class="text-end">@t.SoDuTruoc.ToString("N0") đ</td>
+                            <td class="text-end">@t.SoDuSau.ToString("N0") đ</td>
+                            <td>@t.NoiDung</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+<div class="row g-3">
+    <div class="col-md-6">
+        <div class="card p-3 h-100">
+            <h2 class="h5">Lịch sử nạp tiền</h2>
+            @if (Model.Deposits.Count == 0)
+            {
+                <p class="text-muted mb-0">Chưa có yêu cầu nạp tiền.</p>
+            }
+            else
+            {
+                <table class="table table-sm mb-0">
+                    <thead><tr><th>Mã</th><th class="text-end">Số tiền</th><th>Trạng thái</th><th></th></tr></thead>
+                    <tbody>
+                        @foreach (var d in Model.Deposits)
+                        {
+                            <tr>
+                                <td>@d.GiaoDichCong.MaDonHangCong</td>
+                                <td class="text-end">@d.SoTien.ToString("N0") đ</td>
+                                <td>@d.TrangThai</td>
+                                <td><a asp-controller="ThanhToan" asp-action="Qr" asp-route-id="@d.GiaoDichCongId" class="btn btn-sm btn-outline-primary">Mở QR</a></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card p-3 h-100">
+            <h2 class="h5">Lịch sử rút tiền</h2>
+            @if (Model.Withdrawals.Count == 0)
+            {
+                <p class="text-muted mb-0">Chưa có yêu cầu rút tiền.</p>
+            }
+            else
+            {
+                <table class="table table-sm mb-0">
+                    <thead><tr><th>Ngày</th><th>Ngân hàng</th><th class="text-end">Số tiền</th><th>Trạng thái</th></tr></thead>
+                    <tbody>
+                        @foreach (var w in Model.Withdrawals)
+                        {
+                            <tr>
+                                <td>@w.NgayTao.ToString("dd/MM/yyyy HH:mm")</td>
+                                <td>@w.TenNganHang - @w.SoTaiKhoan</td>
+                                <td class="text-end">@w.SoTien.ToString("N0") đ</td>
+                                <td>@w.TrangThai @if(!string.IsNullOrEmpty(w.LyDoTuChoi)){<span class="text-danger small">(@w.LyDoTuChoi)</span>}</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </div>
+</div>

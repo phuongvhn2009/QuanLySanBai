@@ -21,7 +21,35 @@ public class BookingsController(QuanLySanBaiContext db, BookingService service) 
     }
 
     [HttpPost]
-    public async Task<IActionResult> Create(BookingForm form)
+    public async Task<IActionResult> HuyCoHoanTien([FromServices] RefundService refunds, OrderActionForm f)
+    {
+        if (!ModelState.IsValid) return BadRequest();
+        if (!await db.DonDatSans.AnyAsync(d => d.Id == f.Id && d.NguoiDungId == AccessService.UserId(User))) return NotFound();
+        await refunds.CancelWithRefund(AccessService.UserId(User), f);
+        TempData["SuccessMessage"] = "Đã hủy đơn và xử lý hoàn tiền theo chính sách.";
+        return RedirectToAction(nameof(Details), new { id = f.Id });
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> DoiLich([FromServices] RescheduleService reschedules, long id, DateOnly? date)
+    {
+        var model = await reschedules.GetRescheduleOptions(AccessService.UserId(User), id, date);
+        return View(model);
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> DoiLich([FromServices] RescheduleService reschedules, RescheduleForm f)
+    {
+        if (!ModelState.IsValid || f.OrderId <= 0 || f.NewCourtId <= 0 || f.NewSlotId <= 0)
+            throw new BusinessException("Thông tin đổi lịch không hợp lệ.");
+
+        await reschedules.ExecuteReschedule(AccessService.UserId(User), f);
+        TempData["SuccessMessage"] = "Đổi lịch đặt sân thành công!";
+        return RedirectToAction(nameof(Details), new { id = f.OrderId });
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> Create(BookingForm form, [FromServices] PaymentService paymentService)
     {
         if (!ModelState.IsValid)
         {
@@ -30,11 +58,11 @@ public class BookingsController(QuanLySanBaiContext db, BookingService service) 
                 ? RedirectToAction("Details", "Courts", new { id = form.CourtId, date = form.Date != default ? form.Date.ToString("yyyy-MM-dd") : null })
                 : RedirectToAction("Index", "Courts");
         }
+        long id;
+        var userId = AccessService.UserId(User);
         try
         {
-            var id = await service.Book(AccessService.UserId(User), form, HttpContext.RequestAborted);
-            TempData["SuccessMessage"] = "Đặt sân thành công! Bạn có thời gian giữ chỗ để hoàn tất các bước tiếp theo.";
-            return RedirectToAction(nameof(Details), new { id });
+            id = await service.Book(userId, form, HttpContext.RequestAborted);
         }
         catch (BusinessException ex)
         {
@@ -53,19 +81,81 @@ public class BookingsController(QuanLySanBaiContext db, BookingService service) 
             TempData["ErrorMessage"] = msg;
             return RedirectToAction("Details", "Courts", new { id = form.CourtId, date = form.Date.ToString("yyyy-MM-dd") });
         }
+
+        try
+        {
+            if (form.PaymentChoice is "QR_COC" or "QR_FULL")
+            {
+                var gwId = await paymentService.CreateBookingQr(userId, id, form.PaymentChoice == "QR_COC" ? "COC" : "THANH_TOAN");
+                TempData["SuccessMessage"] = "Đã giữ chỗ thành công! Quét mã VietQR bên dưới để hoàn tất thanh toán.";
+                return RedirectToAction("Qr", "ThanhToan", new { id = gwId });
+            }
+
+            if (form.PaymentChoice is "VI_COC" or "VI_FULL")
+            {
+                var payResult = await paymentService.PayWithWalletOrQrAsync(userId, new PayWalletForm
+                {
+                    OrderId = id,
+                    Purpose = form.PaymentChoice == "VI_COC" ? "COC" : "THANH_TOAN",
+                    Key = Guid.NewGuid().ToString("N")
+                });
+                if (payResult.PaymentId.HasValue)
+                {
+                    TempData["SuccessMessage"] = "Đặt sân và thanh toán bằng Ví thành công!";
+                    return RedirectToAction("HoaDon", "ThanhToan", new { id = payResult.PaymentId.Value });
+                }
+                TempData["InfoMessage"] = payResult.InfoMessage;
+                return RedirectToAction("Qr", "ThanhToan", new { id = payResult.GatewayTxId!.Value });
+            }
+        }
+        catch (BusinessException ex)
+        {
+            TempData["ErrorMessage"] = $"Đã giữ chỗ đơn thành công nhưng chưa tạo được thanh toán: {ex.Message}";
+            return RedirectToAction(nameof(Details), new { id });
+        }
+
+        TempData["SuccessMessage"] = form.PaymentChoice == "TAI_QUAY"
+            ? "Đặt giữ chỗ thành công! Vui lòng thanh toán tiền mặt hoặc chuyển khoản tại quầy trước hạn giữ chỗ."
+            : "Đặt sân thành công! Bạn có thời gian giữ chỗ để hoàn tất các bước tiếp theo.";
+        return RedirectToAction(nameof(Details), new { id });
     }
 
-    public async Task<IActionResult> Index() => View(await db.DonDatSans.AsNoTracking().Where(d => d.NguoiDungId == AccessService.UserId(User)).OrderByDescending(d => d.Id).Take(100).ToListAsync());
+    public async Task<IActionResult> Index() => View(await db.DonDatSans.AsNoTracking().Include(d => d.ChiTietDatSans).ThenInclude(c => c.San).Where(d => d.NguoiDungId == AccessService.UserId(User)).OrderByDescending(d => d.Id).Take(100).ToListAsync());
 
-    public async Task<IActionResult> Details(long id)
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> Details([FromServices] RefundService refunds, long id)
     {
+        var userId = AccessService.UserId(User);
         var order = await db.DonDatSans.AsNoTracking()
             .Include(d => d.ChiTietDatSans).ThenInclude(c => c.San)
             .Include(d => d.ChiTietDatSans).ThenInclude(c => c.ChinhSachHuyDoi).ThenInclude(p => p.MucPhiHuyDois)
-            .SingleOrDefaultAsync(d => d.Id == id && d.NguoiDungId == AccessService.UserId(User));
+            .Include(d => d.ThanhToanDons).ThenInclude(p => p.HoanTiens)
+            .SingleOrDefaultAsync(d => d.Id == id && d.NguoiDungId == userId);
         if (order is null) return NotFound();
-        ViewBag.CanCancel = !await db.ThanhToanDons.AnyAsync(p => p.DonDatSanId == id && (p.TrangThai == "THANH_CONG" || p.TrangThai == "DANG_XU_LY"));
-        ViewBag.ServerNow = await service.ServerNow();
+
+        var paid = OrderFinance.ComputeNetPaid(order.ThanhToanDons);
+        var now = await service.ServerNow();
+        var activeSlot = order.ChiTietDatSans.FirstOrDefault(c => c.TrangThaiSlot is not ("DA_DOI" or "DA_HUY"));
+
+        ViewBag.Paid = paid;
+        ViewBag.CanCancel = !order.ThanhToanDons.Any(p => p.TrangThai == "THANH_CONG" || p.TrangThai == "DANG_XU_LY");
+        ViewBag.ServerNow = now;
+        ViewBag.CanPay = order.TrangThai is ("CHO_THANH_TOAN" or "DA_XAC_NHAN" or "DANG_SU_DUNG") && paid < (order.TongTienPhaiTra ?? 0m) && (order.TrangThai != "CHO_THANH_TOAN" || order.ThoiGianHetHanGiuCho > now);
+        if (order.TrangThai == "DA_XAC_NHAN" && !string.IsNullOrWhiteSpace(order.MaQrCheckin))
+        {
+            ViewBag.CheckInQrUri = QrCodeHelper.ToSvgDataUri(order.MaQrCheckin);
+        }
+
+        if (order.TrangThai is ("CHO_THANH_TOAN" or "DA_XAC_NHAN") && activeSlot is not null && VietnamTime.Start(activeSlot.NgaySuDung, activeSlot.GioBatDau) > now)
+        {
+            ViewBag.CancelPreview = await refunds.PreviewCancel(userId, id);
+            ViewBag.CanReschedule = activeSlot.ChinhSachHuyDoi.ChoPhepDoiLich;
+        }
+        else
+        {
+            ViewBag.CanReschedule = false;
+        }
+
         return View(order);
     }
 }

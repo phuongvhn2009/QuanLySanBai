@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -20,6 +21,14 @@ builder.Services.AddScoped<DevelopmentSeeder>();
 builder.Services.AddScoped<BookingService>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<OperationService>();
+builder.Services.AddScoped<VietQrService>();
+builder.Services.AddScoped<SePayService>();
+builder.Services.AddScoped<WalletService>();
+builder.Services.AddScoped<PaymentService>();
+builder.Services.AddScoped<WebhookService>();
+builder.Services.AddScoped<RefundService>();
+builder.Services.AddScoped<RescheduleService>();
+builder.Services.AddOptions<QuanLySanBai.ViewModels.SePayOptions>().BindConfiguration("SePay");
 builder.Services.AddOptions<QuanLySanBai.ViewModels.OperationOptions>().BindConfiguration("Operations").Validate(o=>o.CheckInEarlyMinutes is >=0 and <=120).ValidateOnStart();
 builder.Services.AddOptions<QuanLySanBai.ViewModels.BookingOptions>().BindConfiguration("Booking").Validate(o=>o.HoldMinutes is >=1 and <=60 && o.ExpiryIntervalSeconds is >=5 and <=300,"Invalid booking options").ValidateOnStart();
 builder.Services.AddHostedService<HoldExpiryWorker>();
@@ -50,6 +59,13 @@ if(args.Contains("--seed-demo"))
 }
 
 // Configure the HTTP request pipeline.
+var forwardedHeadersOptions = new ForwardedHeadersOptions
+{
+    ForwardedHeaders = Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedFor | Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedProto
+};
+forwardedHeadersOptions.KnownIPNetworks.Clear();
+forwardedHeadersOptions.KnownProxies.Clear();
+app.UseForwardedHeaders(forwardedHeadersOptions);
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Home/Error");
@@ -58,6 +74,31 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+// shortcut: in-memory per-IP rate limit resets on restart; move to distributed limiter when running multiple instances
+var rateBuckets = new ConcurrentDictionary<string, (long Window, int Count)>();
+app.Use(async (context, next) =>
+{
+    context.Response.Headers.TryAdd("X-Content-Type-Options", "nosniff");
+    context.Response.Headers.TryAdd("X-Frame-Options", "SAMEORIGIN");
+    context.Response.Headers.TryAdd("Referrer-Policy", "strict-origin-when-cross-origin");
+    if (context.Request.Path.Value is { } p && p.Contains("//", StringComparison.Ordinal))
+    {
+        while (p.Contains("//", StringComparison.Ordinal)) p = p.Replace("//", "/", StringComparison.Ordinal);
+        context.Request.Path = p;
+    }
+    var reqPath = context.Request.Path;
+    int limit = HttpMethods.IsPost(context.Request.Method) && context.Connection.RemoteIpAddress is not null
+        ? (reqPath.Equals("/Account/Login", StringComparison.OrdinalIgnoreCase) || reqPath.Equals("/Account/Register", StringComparison.OrdinalIgnoreCase) ? 30
+        : reqPath.Equals("/api/webhook/sepay", StringComparison.OrdinalIgnoreCase) ? 120 : 0) : 0;
+    if (limit > 0)
+    {
+        var window = DateTimeOffset.UtcNow.ToUnixTimeSeconds() / 60;
+        if (rateBuckets.Count > 4096) foreach (var kv in rateBuckets) if (kv.Value.Window < window) rateBuckets.TryRemove(kv.Key, out _);
+        var (_, count) = rateBuckets.AddOrUpdate($"{(limit == 30 ? "auth" : "wh")}:{context.Connection.RemoteIpAddress}", _ => (window, 1), (_, prev) => prev.Window == window ? (window, prev.Count + 1) : (window, 1));
+        if (count > limit) { context.Response.StatusCode = StatusCodes.Status429TooManyRequests; context.Response.Headers["Retry-After"] = "60"; await context.Response.WriteAsync("Too many requests."); return; }
+    }
+    await next();
+});
 app.UseRouting();
 
 app.UseAuthentication();

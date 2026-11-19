@@ -1,0 +1,75 @@
+@model QuanLySanBai.ViewModels.KetQuaThanhToanVM
+@{
+    ViewData["Title"] = $"Hóa đơn thanh toán {Model.MaThanhToan}";
+}
+
+<style>
+    @@media print {
+        header, footer, .no-print { display: none !important; }
+        body { background: white !important; }
+        .receipt-card { border: none !important; box-shadow: none !important; }
+    }
+</style>
+
+<div class="mb-3 d-flex gap-2 no-print">
+    <a asp-controller="Bookings" asp-action="Details" asp-route-id="@Model.OrderId" class="btn btn-outline-secondary">← Chi tiết đơn</a>
+    <button type="button" class="btn btn-primary" onclick="window.print()">In hóa đơn</button>
+</div>
+
+<div class="card p-4 receipt-card" style="max-width:720px;margin:auto;">
+    <div class="text-center border-bottom pb-3 mb-3">
+        <h1 class="h3 mb-1">@Model.TenCoSo</h1>
+        <p class="text-muted small mb-1">@Model.DiaChiCoSo</p>
+        <p class="fw-bold mb-0">HÓA ĐƠN THANH TOÁN ĐẶT SÂN</p>
+        <p class="small text-muted mb-0">Mã GD: @Model.MaThanhToan · Ngày giờ: @Model.NgayThanhToan.ToString("dd/MM/yyyy HH:mm:ss")</p>
+    </div>
+
+    <div class="row mb-3">
+        <div class="col-sm-6">
+            <p class="mb-1"><strong>Mã đơn:</strong> @Model.MaDatSan</p>
+            <p class="mb-1"><strong>Khách hàng:</strong> @Model.TenKhachHang</p>
+            <p class="mb-0"><strong>SĐT:</strong> @Model.SdtKhachHang</p>
+        </div>
+        <div class="col-sm-6">
+            <p class="mb-1"><strong>Sân:</strong> @Model.TenSan</p>
+            <p class="mb-1"><strong>Ngày chơi:</strong> @Model.NgaySuDung.ToString("dd/MM/yyyy")</p>
+            <p class="mb-0"><strong>Giờ:</strong> @Model.GioBatDau.ToString("HH:mm")–@(Model.GioKetThuc == TimeOnly.MinValue ? "24:00" : Model.GioKetThuc.ToString("HH:mm"))</p>
+        </div>
+    </div>
+
+    <table class="table table-bordered table-sm mb-3">
+        <tbody>
+            <tr><td>Tiền thuê sân</td><td class="text-end">@Model.TongTienSan.ToString("N0") đ</td></tr>
+            @if (Model.TongPhiPhat > 0)
+            {
+                <tr><td>Phí phát sinh / đổi lịch</td><td class="text-end">@Model.TongPhiPhat.ToString("N0") đ</td></tr>
+            }
+            @if (Model.TienGiamGia > 0)
+            {
+                <tr><td>Giảm giá</td><td class="text-end">-@Model.TienGiamGia.ToString("N0") đ</td></tr>
+            }
+            <tr class="table-light"><th>Tổng tiền đơn</th><th class="text-end">@Model.TongTienPhaiTra.ToString("N0") đ</th></tr>
+            <tr><td>Hình thức thanh toán (@Model.MucDich)</td><td class="text-end">@Model.PhuongThuc</td></tr>
+            <tr><td><strong>Số tiền giao dịch này</strong></td><td class="text-end"><strong class="text-success">@Model.SoTienThanhToan.ToString("N0") đ</strong></td></tr>
+            @if (Model.SoTienKhachDua.HasValue)
+            {
+                <tr><td>Tiền khách đưa</td><td class="text-end">@Model.SoTienKhachDua.Value.ToString("N0") đ</td></tr>
+                <tr><td>Tiền thừa trả khách</td><td class="text-end">@(Model.TienThua?.ToString("N0") ?? "0") đ</td></tr>
+            }
+            <tr><td>Tổng đã thanh toán cho đơn</td><td class="text-end">@Model.TongDaThu.ToString("N0") đ</td></tr>
+            <tr><td>Còn phải thu</td><td class="text-end">@Model.ConPhaiThu.ToString("N0") đ</td></tr>
+        </tbody>
+    </table>
+
+    <div class="d-flex justify-content-between small text-muted">
+        <span>Trạng thái đơn: @QuanLySanBai.Services.OrderLabels.Status(Model.TrangThaiDon)</span>
+        @if (!string.IsNullOrEmpty(Model.TenNhanVienThu))
+        {
+            <span>Thu ngân: @Model.TenNhanVienThu</span>
+        }
+        @if (!string.IsNullOrEmpty(Model.MaThamChieuNgoai))
+        {
+            <span>Mã tham chiếu: @Model.MaThamChieuNgoai</span>
+        }
+    </div>
+</div>

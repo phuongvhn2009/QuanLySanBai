@@ -28,6 +28,29 @@ public class CourtsController(QuanLySanBaiContext db, BookingService service) : 
     {
         if(!ModelState.IsValid) return BadRequest();
         var calendar=await service.Calendar(id,date ?? VietnamTime.Today);
-        return calendar is null ? NotFound() : View(calendar);
+        if (calendar is null) return NotFound();
+        if (User.Identity?.IsAuthenticated == true)
+        {
+            var uid = AccessService.UserId(User);
+            ViewBag.WalletBalance = await db.ViNguoiDungs.AsNoTracking()
+                .Where(w => w.NguoiDungId == uid)
+                .Select(w => (decimal?)w.SoDuKhaDung)
+                .SingleOrDefaultAsync() ?? 0m;
+            var targetDate = calendar.Date;
+            var mySlots = await db.ChiTietDatSans.AsNoTracking()
+                .Where(c => c.SanId == id
+                    && c.NgaySuDung == targetDate
+                    && c.DonDatSan.NguoiDungId == uid
+                    && c.TrangThaiSlot != "DA_HUY"
+                    && c.TrangThaiSlot != "DA_DOI"
+                    && c.DonDatSan.TrangThai != "DA_HUY"
+                    && c.DonDatSan.TrangThai != "HET_HAN")
+                .Select(c => new { c.KhungGioId, c.DonDatSanId, c.DonDatSan.TrangThai })
+                .ToListAsync();
+            ViewBag.MySlotOrders = mySlots
+                .GroupBy(x => x.KhungGioId)
+                .ToDictionary(g => g.Key, g => (g.First().DonDatSanId, g.First().TrangThai));
+        }
+        return View(calendar);
     }
 }

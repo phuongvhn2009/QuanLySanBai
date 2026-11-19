@@ -1,6 +1,49 @@
 ﻿@model QuanLySanBai.ViewModels.OperationList
-@{ ViewData["Title"]="Đơn đặt tại cơ sở"; }
-<div class="page-heading"><div><a href="/CoSo">← Cơ sở của tôi</a><h1 class="mt-3">Lịch và đơn đặt</h1></div>@if((bool)ViewBag.CanCreate){<a class="btn btn-primary" asp-action="Counter" asp-route-facilityId="@Model.FacilityId">Đặt tại quầy</a>}</div>
+@{
+    ViewData["Title"] = "Đơn đặt tại cơ sở";
+    var canCreate = (bool)(ViewBag.CanCreate ?? false);
+    var canCheckIn = (bool)(ViewBag.CanCheckIn ?? false);
+}
+<div class="page-heading">
+    <div><a href="/CoSo">← Cơ sở của tôi</a><h1 class="mt-3">Lịch và đơn đặt</h1></div>
+    <div class="d-flex gap-2 flex-wrap">
+        @if (canCreate)
+        {
+            <a class="btn btn-primary" asp-action="Counter" asp-route-facilityId="@Model.FacilityId">Đặt tại quầy</a>
+        }
+    </div>
+</div>
+@if (canCheckIn)
+{
+    <div class="card p-3 mb-3 border-success" data-qr-scanner>
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+            <div>
+                <h2 class="h6 mb-0 text-success">Quét QR Check-in nhanh</h2>
+                <p class="small text-muted mb-0">Mở camera để quét mã QR Check-in trên điện thoại khách, hoặc nhập/quét mã đặt sân bằng máy đọc mã.</p>
+            </div>
+            <div class="d-flex gap-2">
+                <button type="button" class="btn btn-success btn-sm" data-qr-start>Mở camera quét QR</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm d-none" data-qr-stop>Tắt camera</button>
+            </div>
+        </div>
+        <div class="d-none mb-2" data-qr-video-wrap>
+            <video playsinline muted class="border rounded bg-dark w-100" style="max-width:360px;max-height:280px;object-fit:cover;"></video>
+        </div>
+        <form asp-action="ScanCheckIn" method="post" class="d-flex gap-2 flex-wrap align-items-center">
+            <input name="facilityId" value="@Model.FacilityId" type="hidden" />
+            <input name="code" data-qr-input class="form-control form-control-sm" style="max-width:340px;" placeholder="Mã QR Check-in hoặc mã đặt sân..." required maxlength="255" />
+            <button class="btn btn-primary btn-sm">Check-in</button>
+        </form>
+        <p class="small text-muted mt-2 mb-0" data-qr-status></p>
+    </div>
+}
 <form method="get" class="card p-3 mb-3"><input name="facilityId" value="@Model.FacilityId" type="hidden" /><div class="action-row"><label>Ngày sử dụng <input name="date" type="date" value="@Model.Date?.ToString("yyyy-MM-dd")" /></label><label>Điện thoại <input name="phone" value="@Model.Phone" /></label><label>Trạng thái <select name="status"><option value="">Tất cả</option>@foreach(var s in new[]{"CHO_THANH_TOAN","DA_XAC_NHAN","DANG_SU_DUNG","HOAN_THANH","DA_HUY","HET_HAN"}){<option value="@s" selected="@(s==Model.Status)">@QuanLySanBai.Services.OrderLabels.Status(s)</option>}</select></label><button class="btn btn-primary">Lọc đơn</button></div></form>
-<div class="table-responsive"><table class="table align-middle"><thead><tr><th>Khách</th><th>Sân / thời gian</th><th>Trạng thái</th><th></th></tr></thead><tbody>@foreach(var d in Model.Orders){<tr><td>@d.TenKhachHang<br />@d.SdtKhachHang</td><td>@foreach(var c in d.ChiTietDatSans){<p class="mb-0">@c.San.TenSan · @c.NgaySuDung · @c.GioBatDau–@(c.GioKetThuc==TimeOnly.MinValue ? "24:00" : c.GioKetThuc.ToString())</p>}</td><td>@QuanLySanBai.Services.OrderLabels.Status(d.TrangThai)</td><td><a class="btn btn-outline-primary" asp-action="Details" asp-route-id="@d.Id">Xem đơn</a></td></tr>}</tbody></table></div>
+<div class="table-responsive"><table class="table align-middle"><thead><tr><th>Khách</th><th>Sân / thời gian</th><th>Trạng thái</th><th></th></tr></thead><tbody>@foreach(var d in Model.Orders){<tr><td>@d.TenKhachHang<br />@d.SdtKhachHang</td><td>@foreach(var c in d.ChiTietDatSans.Where(x=>x.TrangThaiSlot!="DA_DOI")){<p class="mb-0">@c.San.TenSan · @c.NgaySuDung · @c.GioBatDau–@(c.GioKetThuc==TimeOnly.MinValue ? "24:00" : c.GioKetThuc.ToString())</p>}</td><td>@QuanLySanBai.Services.OrderLabels.Status(d.TrangThai)</td><td><a class="btn btn-outline-primary" asp-action="Details" asp-route-id="@d.Id">Xem đơn</a></td></tr>}</tbody></table></div>
 <p>Trang @Model.Page / @Model.TotalPages</p><div class="action-row">@if(Model.Page>1){<a class="btn btn-outline-secondary" asp-route-facilityId="@Model.FacilityId" asp-route-page="@(Model.Page-1)" asp-route-date="@Model.Date?.ToString("yyyy-MM-dd")" asp-route-status="@Model.Status" asp-route-phone="@Model.Phone">Trang trước</a>}@if(Model.Page<Model.TotalPages){<a class="btn btn-outline-secondary" asp-route-facilityId="@Model.FacilityId" asp-route-page="@(Model.Page+1)" asp-route-date="@Model.Date?.ToString("yyyy-MM-dd")" asp-route-status="@Model.Status" asp-route-phone="@Model.Phone">Trang sau</a>}</div>
+@section Scripts {
+    @if (canCheckIn)
+    {
+        <script src="~/lib/jsqr/jsQR.min.js" asp-append-version="true"></script>
+        <script src="~/js/qr-checkin.js" asp-append-version="true"></script>
+    }
+}

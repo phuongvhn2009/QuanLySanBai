@@ -28,9 +28,9 @@ public class AccountController(QuanLySanBaiContext db, IPasswordHasher<NguoiDung
         if (!ModelState.IsValid) return View(model);
         var role = await db.VaiTros.SingleOrDefaultAsync(r => r.MaVaiTro == "KHACH_HANG");
         if (role is null) { ModelState.AddModelError("", "Chưa có danh mục vai trò khách hàng. Hãy liên hệ quản trị viên."); return View(model); }
-        var user = new NguoiDung { HoVaTen = model.HoVaTen, SoDienThoai = model.SoDienThoai, Email = model.Email, TrangThai = true, NgayTao = DateTime.Now, NgayCapNhat = DateTime.Now };
+        var user = new NguoiDung { HoVaTen = model.HoVaTen, SoDienThoai = model.SoDienThoai, Email = model.Email, TrangThai = true, NgayTao = VietnamTime.Now, NgayCapNhat = VietnamTime.Now };
         user.MatKhauHash = hasher.HashPassword(user, model.Password);
-        user.NguoiDungVaiTros.Add(new NguoiDungVaiTro { VaiTroId = role.Id, NgayGan = DateTime.Now });
+        user.NguoiDungVaiTros.Add(new NguoiDungVaiTro { VaiTroId = role.Id, NgayGan = VietnamTime.Now });
         db.NguoiDungs.Add(user);
         try { await db.SaveChangesAsync(); }
         catch (DbUpdateException ex) when (IsDuplicate(ex)) { ModelState.AddModelError("", "Số điện thoại hoặc email đã được sử dụng."); return View(model); }
@@ -68,7 +68,7 @@ public class AccountController(QuanLySanBaiContext db, IPasswordHasher<NguoiDung
         if (!ModelState.IsValid) return View(model);
         var user = await db.NguoiDungs.FindAsync(id);
         if (user is null) return Challenge();
-        user.HoVaTen = model.HoVaTen; user.SoDienThoai = model.SoDienThoai; user.Email = model.Email; user.NgayCapNhat = DateTime.Now;
+        user.HoVaTen = model.HoVaTen; user.SoDienThoai = model.SoDienThoai; user.Email = model.Email; user.NgayCapNhat = VietnamTime.Now;
         try { await db.SaveChangesAsync(); }
         catch (DbUpdateException ex) when (IsDuplicate(ex)) { ModelState.AddModelError("", "Số điện thoại hoặc email đã được sử dụng."); return View(model); }
         TempData["SuccessMessage"] = "Đã cập nhật hồ sơ.";
