@@ -2,98 +2,391 @@
 @{
     ViewData["Title"] = $"{Model.Court.TenSan} — Lịch và đặt sân";
     var walletBalance = ViewBag.WalletBalance as decimal?;
+    var mySlotOrders = ViewBag.MySlotOrders as Dictionary<int, (long OrderId, string Status)> ?? new();
+    var today = QuanLySanBai.Services.VietnamTime.Today;
+    var quickDates = Enumerable.Range(0, 5).Select(i => today.AddDays(i)).ToList();
+    var openCount = Model.Slots.Count(s => s.CanBook);
+    string DayLabel(DateOnly d)
+    {
+        if (d == today) return "Hôm nay";
+        if (d == today.AddDays(1)) return "Ngày mai";
+        return d.DayOfWeek switch
+        {
+            DayOfWeek.Monday => "Thứ 2",
+            DayOfWeek.Tuesday => "Thứ 3",
+            DayOfWeek.Wednesday => "Thứ 4",
+            DayOfWeek.Thursday => "Thứ 5",
+            DayOfWeek.Friday => "Thứ 6",
+            DayOfWeek.Saturday => "Thứ 7",
+            _ => "Chủ nhật"
+        };
+    }
 }
-<div class="mb-3">
-    <a asp-action="Index" class="btn btn-outline-secondary">← Danh sách sân</a>
+
+<div class="mb-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <a asp-action="Index" class="btn btn-outline-secondary btn-sm">← Danh sách sân</a>
+    @if (walletBalance.HasValue)
+    {
+        <a asp-controller="Wallet" asp-action="Index" class="btn btn-sm btn-outline-primary">
+            Ví của bạn: <strong class="ms-1">@walletBalance.Value.ToString("N0") đ</strong>
+        </a>
+    }
 </div>
-<h1>@Model.Court.TenSan</h1>
-<p class="text-muted">@Model.Court.CoSo.TenCoSo · @Model.Court.CoSo.DiaChi · @Model.Court.LoaiSan.MonTheThao.TenMon</p>
-@if (walletBalance.HasValue)
+
+<div class="booking-stepper" aria-label="Các bước đặt sân">
+    <span class="booking-step is-active">1. Chọn khung giờ</span>
+    <span class="booking-step-sep">›</span>
+    <span class="booking-step">2. Thanh toán</span>
+    <span class="booking-step-sep">›</span>
+    <span class="booking-step">3. Nhận QR Check-in</span>
+</div>
+
+<div class="mb-3">
+    <h1 class="mb-1">@Model.Court.TenSan</h1>
+    <p class="text-muted mb-0">@Model.Court.CoSo.TenCoSo · @Model.Court.CoSo.DiaChi · <span class="badge bg-light text-dark border">@Model.Court.LoaiSan.MonTheThao.TenMon</span></p>
+</div>
+
+<div class="card p-3 mb-3">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
+        <div>
+            <div class="small fw-semibold text-muted mb-2">Chọn ngày chơi</div>
+            <div class="date-strip">
+                @foreach (var d in quickDates)
+                {
+                    <a asp-action="Details" asp-route-id="@Model.Court.Id" asp-route-date="@d.ToString("yyyy-MM-dd")"
+                       class="date-pill @(d == Model.Date ? "is-active" : "")">
+                        <small>@DayLabel(d)</small>
+                        <strong>@d.ToString("dd/MM")</strong>
+                    </a>
+                }
+            </div>
+        </div>
+        <form method="get" class="d-flex align-items-end gap-2">
+            <input name="id" value="@Model.Court.Id" type="hidden" />
+            <div>
+                <label class="small fw-semibold text-muted d-block mb-1" for="datePicker">Ngày khác</label>
+                <input id="datePicker" name="date" type="date" class="form-control form-control-sm" value="@Model.Date.ToString("yyyy-MM-dd")" onchange="this.form.submit()" required />
+            </div>
+            <noscript><button class="btn btn-secondary btn-sm">Xem lịch</button></noscript>
+        </form>
+    </div>
+    <div class="d-flex flex-wrap gap-3 mt-3 pt-2 border-top small text-muted">
+        <span><span class="status-dot bg-success"></span>Còn trống (@openCount)</span>
+        <span><span class="status-dot bg-warning"></span>Đang giữ chỗ</span>
+        <span><span class="status-dot bg-secondary"></span>Đã đặt / Chưa mở</span>
+        <span class="ms-md-auto">Giờ Việt Nam (UTC+7) · 00:00 là 24:00</span>
+    </div>
+</div>
+
+@if (openCount == 0)
 {
-    <div class="alert alert-light border py-2 mb-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <span>Số dư Ví khả dụng của bạn: <strong class="text-success">@walletBalance.Value.ToString("N0") đ</strong> <span class="text-muted small">(nếu ví không đủ khi đặt, hệ thống sẽ tự động tạo mã chuyển khoản VietQR theo mã đơn)</span></span>
-        <a asp-controller="Wallet" asp-action="Index" class="btn btn-sm btn-outline-primary">Ví của tôi</a>
+    <div class="alert alert-light border d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+        <span>Ngày <strong>@Model.Date.ToString("dd/MM/yyyy")</strong> hiện không còn khung giờ trống để đặt mới. Hãy chọn ngày khác ở phía trên.</span>
+        <a asp-action="Details" asp-route-id="@Model.Court.Id" asp-route-date="@Model.Date.AddDays(1).ToString("yyyy-MM-dd")" class="btn btn-sm btn-outline-primary">Xem ngày kế tiếp →</a>
     </div>
 }
-<form method="get" class="row g-2 align-items-center mb-3">
-    <input name="id" value="@Model.Court.Id" type="hidden" />
-    <div class="col-auto">
-        <label class="col-form-label">Ngày sử dụng</label>
-    </div>
-    <div class="col-auto">
-        <input name="date" type="date" class="form-control" value="@Model.Date.ToString("yyyy-MM-dd")" required />
-    </div>
-    <div class="col-auto">
-        <button class="btn btn-secondary">Xem lịch</button>
-    </div>
-</form>
-<p class="small text-muted">Giờ Việt Nam (UTC+7). Kết thúc 00:00 là 24:00 của ngày đã chọn. Giá và chỗ trống được kiểm tra lại khi đặt.</p>
+
+<div class="row g-3 mb-4">
+    @foreach (var k in Model.Slots)
+    {
+        var timeRange = $"{k.Start:HH\\:mm}–{(k.End == TimeOnly.MinValue ? "24:00" : k.End.ToString("HH:mm"))}";
+        var hasMine = mySlotOrders.TryGetValue(k.SlotId, out var mine);
+        var cardClass = k.CanBook ? "is-open" : hasMine ? "is-mine" : "is-disabled";
+        <div class="col-md-6">
+            <article class="slot-card @cardClass h-100 d-flex flex-column justify-content-between gap-2">
+                <div class="d-flex justify-content-between align-items-start gap-2">
+                    <div>
+                        <h2 class="h5 mb-1">@timeRange</h2>
+                        @if (hasMine)
+                        {
+                            <span class="badge @(mine.Status == "DA_XAC_NHAN" ? "bg-success" : "bg-primary")">
+                                Đơn của bạn · @QuanLySanBai.Services.OrderLabels.Status(mine.Status)
+                            </span>
+                        }
+                        else
+                        {
+                            <span class="badge @(k.CanBook ? "bg-success" : k.Status == "Đang giữ chỗ" ? "bg-warning text-dark" : "bg-secondary")">@k.Status</span>
+                        }
+                    </div>
+                    <div class="text-end">
+                        @if (k.Price.HasValue)
+                        {
+                            <div class="fw-bold fs-5 @(k.CanBook ? "text-primary" : "text-muted")">@k.Price.Value.ToString("N0") đ</div>
+                            <div class="small text-muted">Cọc từ @(k.Deposit?.ToString("N0") ?? "0") đ</div>
+                        }
+                        else
+                        {
+                            <div class="small text-muted">Chưa thiết lập giá</div>
+                        }
+                    </div>
+                </div>
+                <div class="pt-2 border-top d-flex justify-content-end">
+                    @if (hasMine)
+                    {
+                        if (mine.Status == "CHO_THANH_TOAN")
+                        {
+                            <a asp-controller="ThanhToan" asp-action="Index" asp-route-id="@mine.OrderId" class="btn btn-primary btn-sm w-100">Tiếp tục thanh toán đơn này →</a>
+                        }
+                        else
+                        {
+                            <a asp-controller="Bookings" asp-action="Details" asp-route-id="@mine.OrderId" class="btn btn-outline-primary btn-sm w-100">Xem đơn &amp; Mã QR Check-in →</a>
+                        }
+                    }
+                    else if (k.CanBook)
+                    {
+                        if (User.Identity?.IsAuthenticated == true)
+                        {
+                            <button type="button"
+                                    class="btn btn-success btn-sm w-100"
+                                    data-open-booking
+                                    data-slot-id="@k.SlotId"
+                                    data-time="@timeRange"
+                                    data-price="@((k.Price ?? 0m).ToString(System.Globalization.CultureInfo.InvariantCulture))"
+                                    data-deposit="@((k.Deposit ?? 0m).ToString(System.Globalization.CultureInfo.InvariantCulture))">
+                                Chọn khung giờ này →
+                            </button>
+                        }
+                        else
+                        {
+                            <a href="/Account/Login?returnUrl=@Uri.EscapeDataString(Context.Request.Path + Context.Request.QueryString)" class="btn btn-outline-primary btn-sm w-100">Đăng nhập để đặt sân</a>
+                        }
+                    }
+                    else
+                    {
+                        <span class="small text-muted py-1">Không thể đặt khung giờ này</span>
+                    }
+                </div>
+            </article>
+        </div>
+    }
+</div>
+
 @if (Model.Policy != null)
 {
-    <details class="border p-3 my-3 rounded config-section">
-        <summary class="fw-semibold">Chính sách hủy/đổi: @Model.Policy.TenChinhSach</summary>
-        <p class="mt-2 mb-1">@(Model.Policy.ChoPhepDoiLich ? "Cho phép đổi lịch" : "Không cho phép đổi lịch")</p>
+    <details class="border p-3 mb-4 rounded config-section">
+        <summary class="fw-semibold">Chính sách hủy / đổi lịch: @Model.Policy.TenChinhSach</summary>
+        <p class="mt-2 mb-1 small">@(Model.Policy.ChoPhepDoiLich ? "Cho phép đổi lịch theo mức phí bên dưới." : "Cơ sở hiện không hỗ trợ đổi lịch cho khung này.")</p>
         @foreach (var f in Model.Policy.MucPhiHuyDois.OrderBy(f => f.SoGioTuTruocTran))
         {
             <p class="mb-1 text-muted small">@f.SoGioTuTruocTran–@(f.SoGioDenTruocTran?.ToString() ?? "∞") giờ trước buổi: phí hủy @f.TiLePhiHuy.ToString("0.##")%, phí đổi @f.TiLePhiDoi.ToString("0.##")%</p>
         }
     </details>
 }
-@foreach (var k in Model.Slots)
+
+@if (User.Identity?.IsAuthenticated == true)
 {
-    <article class="card p-3 my-2">
-        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-            <div>
-                <h2 class="h5 mb-1">@k.Start.ToString("HH:mm")–@(k.End == TimeOnly.MinValue ? "24:00" : k.End.ToString("HH:mm"))</h2>
-                <p class="mb-0 text-muted">
-                    <span class="badge @(k.CanBook ? "bg-success" : k.Status == "Đang giữ chỗ" ? "bg-warning text-dark" : "bg-secondary")">@k.Status</span>
-                    @if (k.Price.HasValue)
-                    {
-                        <span> · Giá @k.Price.Value.ToString("N0") đ · Cọc @(k.Deposit?.ToString("N0") ?? "0") đ</span>
-                    }
-                    else
-                    {
-                        <span> · Chưa có giá</span>
-                    }
-                </p>
+    var bal = walletBalance ?? 0m;
+    <div class="modal fade" id="bookingModal" tabindex="-1" aria-labelledby="bookingModalTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <form asp-controller="Bookings" asp-action="Create" method="post" id="bookingModalForm"
+                      data-wallet-balance="@bal.ToString(System.Globalization.CultureInfo.InvariantCulture)">
+                    <input name="CourtId" value="@Model.Court.Id" type="hidden" />
+                    <input name="SlotId" id="bmSlotId" value="" type="hidden" />
+                    <input name="Date" value="@Model.Date.ToString("yyyy-MM-dd")" type="hidden" />
+                    <input name="PaymentChoice" id="bmPaymentChoice" value="QR_COC" type="hidden" />
+
+                    <div class="modal-header">
+                        <div>
+                            <h2 class="modal-title h5 mb-0" id="bookingModalTitle">Xác nhận đặt sân</h2>
+                            <div class="small text-muted">@Model.Court.TenSan · @Model.Court.CoSo.TenCoSo</div>
+                        </div>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button>
+                    </div>
+
+                    <div class="modal-body">
+                        <div class="p-3 rounded bg-light border mb-3">
+                            <div class="d-flex justify-content-between small mb-1">
+                                <span class="text-muted">Ngày &amp; giờ chơi</span>
+                                <strong>@Model.Date.ToString("dd/MM/yyyy") · <span id="bmTime"></span></strong>
+                            </div>
+                            <div class="d-flex justify-content-between small mb-1">
+                                <span class="text-muted">Tổng tiền sân</span>
+                                <strong class="text-primary" id="bmPriceText"></strong>
+                            </div>
+                            <div class="d-flex justify-content-between small">
+                                <span class="text-muted">Tiền cọc tối thiểu</span>
+                                <strong id="bmDepositText"></strong>
+                            </div>
+                        </div>
+
+                        <div id="bmScopeSection" class="mb-3">
+                            <div class="small fw-semibold mb-2">1. Chọn mức thanh toán</div>
+                            <div class="d-grid gap-2">
+                                <label class="choice-card is-selected" data-choice-group="scope">
+                                    <input type="radio" name="bmScope" value="COC" checked />
+                                    <div class="flex-grow-1">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <strong>Đặt cọc trước</strong>
+                                            <strong class="text-primary" id="bmScopeCocAmount"></strong>
+                                        </div>
+                                        <div class="small text-muted">Giữ sân chắc chắn, phần còn lại thanh toán sau tại sân hoặc online.</div>
+                                    </div>
+                                </label>
+                                <label class="choice-card" data-choice-group="scope">
+                                    <input type="radio" name="bmScope" value="FULL" />
+                                    <div class="flex-grow-1">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <strong>Thanh toán đủ 100%</strong>
+                                            <strong class="text-success" id="bmScopeFullAmount"></strong>
+                                        </div>
+                                        <div class="small text-muted">Đến sân chỉ cần đưa mã QR Check-in cho nhân viên quét.</div>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <div class="small fw-semibold mb-2" id="bmMethodHeading">2. Chọn cách thanh toán</div>
+                            <div class="d-grid gap-2">
+                                <label class="choice-card is-selected" data-choice-group="method">
+                                    <input type="radio" name="bmMethod" value="QR" checked />
+                                    <div class="flex-grow-1">
+                                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-1">
+                                            <strong>Chuyển khoản VietQR</strong>
+                                            <span class="badge bg-primary-subtle text-primary border">Tự động xác nhận</span>
+                                        </div>
+                                        <div class="small text-muted">Quét mã QR ngân hàng, đơn xác nhận ngay khi chuyển khoản.</div>
+                                    </div>
+                                </label>
+
+                                <label class="choice-card" data-choice-group="method">
+                                    <input type="radio" name="bmMethod" value="VI" />
+                                    <div class="flex-grow-1">
+                                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-1">
+                                            <strong>Ví của tôi (@bal.ToString("N0") đ)</strong>
+                                            <span class="badge" id="bmWalletBadge"></span>
+                                        </div>
+                                        <div class="small text-muted" id="bmWalletHint"></div>
+                                    </div>
+                                </label>
+
+                                <label class="choice-card" data-choice-group="method">
+                                    <input type="radio" name="bmMethod" value="TAI_QUAY" />
+                                    <div class="flex-grow-1">
+                                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-1">
+                                            <strong>Thanh toán tại quầy</strong>
+                                            <span class="badge bg-light text-dark border">Giữ chỗ 15 phút</span>
+                                        </div>
+                                        <div class="small text-muted">Trả tiền mặt hoặc chuyển khoản trực tiếp cho nhân viên tại sân.</div>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="form-label small fw-semibold mb-1" for="bmNote">Ghi chú cho sân (không bắt buộc)</label>
+                            <input id="bmNote" name="Note" maxlength="1000" class="form-control form-control-sm" placeholder="Ví dụ: cần thuê thêm vợt, đến sớm 10 phút..." />
+                        </div>
+                    </div>
+
+                    <div class="modal-footer flex-column align-items-stretch gap-2">
+                        <button type="submit" class="btn btn-primary w-100" id="bmSubmitBtn">Xác nhận đặt sân</button>
+                        <button type="button" class="btn btn-link btn-sm text-muted text-decoration-none" data-bs-dismiss="modal">Chọn khung giờ khác</button>
+                    </div>
+                </form>
             </div>
-            @if (k.CanBook)
-            {
-                @if (User.Identity?.IsAuthenticated == true)
-                {
-                    var priceVal = k.Price ?? 0m;
-                    var depVal = k.Deposit ?? 0m;
-                    var hasSplitDeposit = depVal > 0 && depVal < priceVal;
-                    var bal = walletBalance ?? 0m;
-                    <form asp-controller="Bookings" asp-action="Create" method="post" class="d-flex flex-wrap align-items-center gap-2 mt-2 mt-md-0"
-                          data-confirm="Xác nhận đặt khung giờ @k.Start.ToString("HH:mm")–@(k.End == TimeOnly.MinValue ? "24:00" : k.End.ToString("HH:mm")) ngày @Model.Date.ToString("dd/MM/yyyy") (Giá: @priceVal.ToString("N0") đ)?">
-                        <input name="CourtId" value="@Model.Court.Id" type="hidden" />
-                        <input name="SlotId" value="@k.SlotId" type="hidden" />
-                        <input name="Date" value="@Model.Date.ToString("yyyy-MM-dd")" type="hidden" />
-                        <select name="PaymentChoice" class="form-select form-select-sm" style="min-width: 270px; width: auto;" aria-label="Phương thức thanh toán">
-                            @if (hasSplitDeposit)
-                            {
-                                <option value="QR_COC">Chuyển khoản đặt cọc VietQR (@depVal.ToString("N0") đ)</option>
-                                <option value="QR_FULL">Chuyển khoản toàn bộ VietQR (@priceVal.ToString("N0") đ)</option>
-                                <option value="VI_COC">Trừ Ví - Đặt cọc (@depVal.ToString("N0") đ)@(bal < depVal ? " — Không đủ, tự tạo QR" : "")</option>
-                                <option value="VI_FULL">Trừ Ví - Toàn bộ (@priceVal.ToString("N0") đ)@(bal < priceVal ? " — Không đủ, tự tạo QR" : "")</option>
-                            }
-                            else
-                            {
-                                <option value="QR_FULL">Chuyển khoản VietQR (@priceVal.ToString("N0") đ)</option>
-                                <option value="VI_FULL">Trừ Ví (@priceVal.ToString("N0") đ)@(bal < priceVal ? " — Không đủ, tự tạo QR" : "")</option>
-                            }
-                            <option value="TAI_QUAY">Đặt giữ chỗ — Trả tiền mặt / CK tại quầy</option>
-                        </select>
-                        <input name="Note" maxlength="1000" class="form-control form-control-sm" style="width: 170px;" placeholder="Ghi chú (tùy chọn)" />
-                        <button type="submit" class="btn btn-primary btn-sm text-nowrap">Đặt khung này</button>
-                    </form>
-                }
-                else
-                {
-                    <a href="/Account/Login?returnUrl=@Uri.EscapeDataString(Context.Request.Path + Context.Request.QueryString)" class="btn btn-outline-primary btn-sm">Đăng nhập để đặt</a>
-                }
-            }
         </div>
-    </article>
+    </div>
+}
+
+@section Scripts {
+    <script>
+        (() => {
+            const modalEl = document.getElementById('bookingModal');
+            const form = document.getElementById('bookingModalForm');
+            if (!modalEl || !form || !window.bootstrap) return;
+
+            const modal = new bootstrap.Modal(modalEl);
+            const walletBal = Number(form.dataset.walletBalance || 0);
+            const slotInput = document.getElementById('bmSlotId');
+            const choiceInput = document.getElementById('bmPaymentChoice');
+            const scopeSection = document.getElementById('bmScopeSection');
+            const methodHeading = document.getElementById('bmMethodHeading');
+            const walletBadge = document.getElementById('bmWalletBadge');
+            const walletHint = document.getElementById('bmWalletHint');
+            const submitBtn = document.getElementById('bmSubmitBtn');
+
+            let currentPrice = 0;
+            let currentDeposit = 0;
+            let hasSplitDeposit = false;
+
+            const fmt = n => Math.round(n).toLocaleString('vi-VN') + ' đ';
+
+            function syncSelectionStyles() {
+                form.querySelectorAll('.choice-card').forEach(card => {
+                    const radio = card.querySelector('input[type="radio"]');
+                    card.classList.toggle('is-selected', Boolean(radio && radio.checked));
+                });
+            }
+
+            function refreshState() {
+                const method = form.querySelector('input[name="bmMethod"]:checked')?.value || 'QR';
+                const scope = hasSplitDeposit
+                    ? (form.querySelector('input[name="bmScope"]:checked')?.value || 'COC')
+                    : 'FULL';
+
+                scopeSection.classList.toggle('d-none', !hasSplitDeposit || method === 'TAI_QUAY');
+                methodHeading.textContent = (!hasSplitDeposit || method === 'TAI_QUAY')
+                    ? 'Chọn cách thanh toán'
+                    : '2. Chọn cách thanh toán';
+
+                const due = scope === 'COC' ? currentDeposit : currentPrice;
+                const enough = walletBal >= due;
+
+                walletBadge.className = enough
+                    ? 'badge bg-success-subtle text-success border'
+                    : 'badge bg-warning-subtle text-warning-emphasis border';
+                walletBadge.textContent = enough ? 'Đủ số dư' : 'Không đủ — tự tạo VietQR';
+                walletHint.textContent = enough
+                    ? 'Trừ ngay ' + fmt(due) + ' từ ví và xác nhận đơn lập tức.'
+                    : 'Thiếu ' + fmt(due - walletBal) + ' — hệ thống sẽ tự tạo mã VietQR ' + fmt(due) + ' cho bạn quét.';
+
+                if (method === 'TAI_QUAY') {
+                    choiceInput.value = 'TAI_QUAY';
+                    submitBtn.className = 'btn btn-primary w-100';
+                    submitBtn.textContent = 'Đặt giữ chỗ — Thanh toán tại quầy';
+                } else if (method === 'QR') {
+                    choiceInput.value = scope === 'COC' ? 'QR_COC' : 'QR_FULL';
+                    submitBtn.className = 'btn btn-primary w-100';
+                    submitBtn.textContent = 'Đặt sân & Tạo mã VietQR (' + fmt(due) + ')';
+                } else {
+                    choiceInput.value = scope === 'COC' ? 'VI_COC' : 'VI_FULL';
+                    submitBtn.className = enough ? 'btn btn-success w-100' : 'btn btn-primary w-100';
+                    submitBtn.textContent = enough
+                        ? 'Đặt sân & Trừ Ví ngay (' + fmt(due) + ')'
+                        : 'Đặt sân & Tạo mã VietQR (' + fmt(due) + ')';
+                }
+                syncSelectionStyles();
+            }
+
+            form.addEventListener('change', refreshState);
+
+            document.querySelectorAll('[data-open-booking]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    currentPrice = Number(btn.dataset.price || 0);
+                    currentDeposit = Number(btn.dataset.deposit || 0);
+                    hasSplitDeposit = currentDeposit > 0 && currentDeposit < currentPrice;
+
+                    slotInput.value = btn.dataset.slotId || '';
+                    document.getElementById('bmTime').textContent = btn.dataset.time || '';
+                    document.getElementById('bmPriceText').textContent = fmt(currentPrice);
+                    document.getElementById('bmDepositText').textContent = fmt(currentDeposit);
+                    document.getElementById('bmScopeCocAmount').textContent = fmt(currentDeposit);
+                    document.getElementById('bmScopeFullAmount').textContent = fmt(currentPrice);
+
+                    const cocRadio = form.querySelector('input[name="bmScope"][value="COC"]');
+                    const fullRadio = form.querySelector('input[name="bmScope"][value="FULL"]');
+                    if (hasSplitDeposit && cocRadio) cocRadio.checked = true;
+                    else if (fullRadio) fullRadio.checked = true;
+
+                    const qrRadio = form.querySelector('input[name="bmMethod"][value="QR"]');
+                    if (qrRadio) qrRadio.checked = true;
+
+                    refreshState();
+                    modal.show();
+                });
+            });
+        })();
+    </script>
 }

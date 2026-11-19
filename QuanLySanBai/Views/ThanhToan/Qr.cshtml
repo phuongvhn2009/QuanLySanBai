@@ -15,6 +15,17 @@
     }
 </div>
 
+@if (!Model.IsWalletDeposit)
+{
+    <div class="booking-stepper" aria-label="Các bước đặt sân">
+        <span class="booking-step is-done">✓ 1. Chọn khung giờ</span>
+        <span class="booking-step-sep">›</span>
+        <span class="booking-step @(Model.Status == "THANH_CONG" ? "is-done" : "is-active")">@(Model.Status == "THANH_CONG" ? "✓ " : "")2. Thanh toán</span>
+        <span class="booking-step-sep">›</span>
+        <span class="booking-step @(Model.Status == "THANH_CONG" ? "is-active" : "")">3. Nhận QR Check-in</span>
+    </div>
+}
+
 <h1>Chuyển khoản ngân hàng (VietQR)</h1>
 
 @if (!string.IsNullOrEmpty(Model.WarningMessage))
@@ -28,14 +39,20 @@
         <div class="alert alert-success">
             <h2 class="h5 mb-1">Thanh toán đã được xác nhận thành công!</h2>
             <p class="mb-2">Hệ thống đã tiếp nhận giao dịch từ ngân hàng và cập nhật trạng thái.</p>
-            @if (Model.PaymentId.HasValue)
-            {
-                <a asp-action="HoaDon" asp-route-id="@Model.PaymentId.Value" class="btn btn-success">Xem &amp; In hóa đơn</a>
-            }
-            else if (Model.IsWalletDeposit)
-            {
-                <a asp-controller="Wallet" asp-action="Index" class="btn btn-success">Xem số dư ví</a>
-            }
+            <div class="d-flex gap-2 flex-wrap">
+                @if (Model.OrderId.HasValue)
+                {
+                    <a asp-controller="Bookings" asp-action="Details" asp-route-id="@Model.OrderId.Value" class="btn btn-success">Xem Mã QR Check-in</a>
+                }
+                @if (Model.PaymentId.HasValue)
+                {
+                    <a asp-action="HoaDon" asp-route-id="@Model.PaymentId.Value" class="btn btn-outline-success">Xem &amp; In hóa đơn</a>
+                }
+                else if (Model.IsWalletDeposit)
+                {
+                    <a asp-controller="Wallet" asp-action="Index" class="btn btn-success">Xem số dư ví</a>
+                }
+            </div>
         </div>
     }
     else if (Model.Status is "THAT_BAI" or "DA_HUY")
@@ -77,7 +94,7 @@
                     <tr><th class="text-muted">Số tài khoản</th><td><strong>@(string.IsNullOrEmpty(Model.AccountNumber) ? "(Chưa cấu hình)" : Model.AccountNumber)</strong></td></tr>
                     <tr><th class="text-muted">Chủ tài khoản</th><td><strong>@(string.IsNullOrEmpty(Model.AccountName) ? "(Chưa cấu hình)" : Model.AccountName)</strong></td></tr>
                     <tr><th class="text-muted">Số tiền chính xác</th><td><strong class="text-danger fs-5">@Model.Amount.ToString("N0") đ</strong></td></tr>
-                    <tr><th class="text-muted">Nội dung chuyển khoản</th><td><strong class="text-primary fs-5" id="transferContent">@Model.TransferContent</strong> <button type="button" class="btn btn-sm btn-outline-secondary ms-2" onclick="navigator.clipboard?.writeText('@Model.TransferContent')">Sao chép</button></td></tr>
+                    <tr><th class="text-muted">Nội dung chuyển khoản</th><td><strong class="text-primary fs-5" id="transferContent">@Model.TransferContent</strong> <button type="button" class="btn btn-sm btn-outline-secondary ms-2" onclick="navigator.clipboard?.writeText('@Model.TransferContent'); this.textContent='Đã sao chép!'; setTimeout(() => this.textContent='Sao chép', 1500);">Sao chép</button></td></tr>
                 </table>
 
                 @if (!Model.IsExpired)
