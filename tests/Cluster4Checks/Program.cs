@@ -306,6 +306,9 @@ try
     Check((await ReadSocket(orderSocket,"PaymentChanged")).Contains("PaymentChanged"),"Realtime: SePay webhook notifies watching client via PaymentChanged");
     var httpPayId=await Scalar($"SELECT id FROM Thanh_Toan_Don WHERE don_dat_san_id={httpPayOrder}");
     Check((int)(await client.GetAsync("/ThanhToan/HoaDon/"+httpPayId)).StatusCode==200,"F01: printable receipt page renders");
+    var confirmedOrderHtml=WebUtility.HtmlDecode(await client.GetStringAsync("/Bookings/Details/"+httpPayOrder));
+    var confirmedQrCode=await With(db=>db.DonDatSans.Where(x=>x.Id==httpPayOrder).Select(x=>x.MaQrCheckin).SingleAsync());
+    Check(confirmedOrderHtml.Contains("checkin-qr-card") && confirmedOrderHtml.Contains("data:image/svg+xml;base64,") && confirmedOrderHtml.Contains(confirmedQrCode),"O04 QR HTTP: confirmed booking renders private local SVG check-in QR");
     var viFailCreate=await Post("/Bookings/Create",new() { ["CourtId"]=court.ToString(),["SlotId"]=slot.ToString(),["Date"]=tomorrow.AddDays(31).ToString("yyyy-MM-dd"),["PaymentChoice"]="VI_FULL" },detail);
     var viFailLoc=viFailCreate.Headers.Location?.ToString() ?? "";
     var viFailQrHtml=viFailLoc.StartsWith("/ThanhToan/Qr/") ? WebUtility.HtmlDecode(await client.GetStringAsync(viFailLoc)) : "";
@@ -333,6 +336,14 @@ try
     var employeeHtml=WebUtility.HtmlDecode(await client.GetStringAsync("/CoSo"));
     Check(employeeHtml.Contains("Cơ sở làm việc") && !employeeHtml.Contains("Quản lý sân và cấu hình") && !employeeHtml.Contains(">Quản lý nhân viên</a>") && !employeeHtml.Contains(">Thêm cơ sở</a>"),"UI: staff sees no owner or ungranted member actions");
     Check((int)(await client.GetAsync("/CoSo/Members?coSoId="+facility)).StatusCode==302,"UI: hidden staff action also denied by server");
+    var unauthScan=await Post("/CoSo/Orders/ScanCheckIn",new() { ["facilityId"]=facility.ToString(),["code"]=confirmedQrCode },"/Account/Profile");
+    Check((int)unauthScan.StatusCode==302 && unauthScan.Headers.Location!.ToString().Contains("/Account/Denied"),"O04 QR HTTP: staff without CHECK_IN denied ScanCheckIn");
+    await Post("/Account/Logout",new(),"/Account/Profile");
+    await Post("/Account/Login",new() { ["Login"]="0988000001",["Password"]="Cluster4Test123!" },"/Account/Login");
+    var staffOrdersHtml=WebUtility.HtmlDecode(await client.GetStringAsync("/CoSo/Orders?facilityId="+facility));
+    Check(staffOrdersHtml.Contains("data-qr-scanner") && staffOrdersHtml.Contains("qr-checkin.js"),"O04 QR HTTP: staff with CHECK_IN sees camera QR scanner");
+    var earlyScan=await Post("/CoSo/Orders/ScanCheckIn",new() { ["facilityId"]=facility.ToString(),["code"]=confirmedQrCode },"/CoSo/Orders?facilityId="+facility);
+    Check((int)earlyScan.StatusCode==302 && earlyScan.Headers.Location!.ToString().Contains("/CoSo/Orders") && !earlyScan.Headers.Location!.ToString().Contains("/Details/"),"O04 QR HTTP: early ScanCheckIn redirects gracefully back to orders list");
     await Run(async db=> { var seed=new DevelopmentSeeder(db,hasher); await seed.Seed(); await seed.Seed(); });
     Check(await Scalar("SELECT COUNT(*) FROM Nguoi_Dung WHERE email='owner@qlsb.example.test'")==1,"C06: development seed idempotent");
     Console.WriteLine($"ALL {count} CHECKS PASSED. Disposable database: {database}");

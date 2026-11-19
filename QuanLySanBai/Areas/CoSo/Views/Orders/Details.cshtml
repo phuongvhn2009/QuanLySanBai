@@ -55,14 +55,24 @@
 }
 @if (Model.CheckIn && d.TrangThai == "DA_XAC_NHAN")
 {
-    <details class="editor-section">
-        <summary>Check-in khách</summary>
-        <form asp-action="CheckIn" method="post">
-            <input name="Id" value="@d.Id" type="hidden" />
-            <input name="Version" value="@Model.Version" type="hidden" />
-            <label>Mã đặt sân hoặc nội dung mã QR <input name="Code" required maxlength="255" /></label>
-            <button class="btn btn-primary">Check-in</button>
-        </form>
+    <details class="editor-section" open>
+        <summary>Check-in khách (QR / Thủ công)</summary>
+        <div data-qr-scanner class="mt-2">
+            <div class="d-flex gap-2 mb-2 flex-wrap">
+                <button type="button" class="btn btn-success btn-sm" data-qr-start>Quét QR bằng Camera</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm d-none" data-qr-stop>Tắt camera</button>
+            </div>
+            <div class="d-none mb-2" data-qr-video-wrap>
+                <video playsinline muted class="border rounded bg-dark w-100" style="max-width:340px;max-height:260px;object-fit:cover;"></video>
+            </div>
+            <form asp-action="CheckIn" method="post">
+                <input name="Id" value="@d.Id" type="hidden" />
+                <input name="Version" value="@Model.Version" type="hidden" />
+                <label>Mã đặt sân hoặc nội dung mã QR <input name="Code" data-qr-input required maxlength="255" /></label>
+                <button class="btn btn-primary">Check-in</button>
+            </form>
+            <p class="small text-muted mt-2 mb-0" data-qr-status></p>
+        </div>
     </details>
 }
 @if (Model.CheckIn && d.TrangThai == "DANG_SU_DUNG")
@@ -151,3 +161,10 @@ else if (cancelPreview is not null && d.TrangThai is "CHO_THANH_TOAN" or "DA_XAC
         }
     }
 </details>
+@section Scripts {
+    @if (Model.CheckIn && d.TrangThai == "DA_XAC_NHAN")
+    {
+        <script src="~/lib/jsqr/jsQR.min.js" asp-append-version="true"></script>
+        <script src="~/js/qr-checkin.js" asp-append-version="true"></script>
+    }
+}

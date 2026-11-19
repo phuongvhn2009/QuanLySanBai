@@ -56,17 +56,43 @@ public class OperationService(QuanLySanBaiContext db,AccessService access,TimePr
         db.ThanhToanDons.Add(new ThanhToanDon { MaThanhToan=Guid.NewGuid().ToString("N"),DonDatSanId=d.Id,NguoiThanhToanId=d.NguoiDungId,NhanVienThuId=actor,PhuongThuc=f.Method,MucDich=f.Purpose,SoTien=f.Amount,MaThamChieuNgoai=f.Reference,KhoaChongLap=f.Key,TrangThai="THANH_CONG",NgayTao=now,NgayThanhToan=now });
     });
     public Task Confirm(long actor,OrderActionForm f) => Locked(async()=> { var d=await Load(f.Id);await Require(actor,d.CoSoId,"THU_TIEN");Version(d,f.Version);var now=await db.Database.SqlQueryRaw<DateTime>("SELECT CONVERT(datetime2(0),DATEADD(HOUR,7,SYSUTCDATETIME())) AS Value").SingleAsync(); await ConfirmPending(d,await Paid(d.Id),now); });
+    private void ApplyCheckIn(DonDatSan d, long actor, string? code)
+    {
+        var trimmed = code?.Trim();
+        var active = ActiveSlots(d);
+        if (d.TrangThai != "DA_XAC_NHAN" || active.Count != 1 || active.Any(c => c.TrangThaiSlot != "DA_XAC_NHAN"))
+            throw new BusinessException("Chỉ check-in đơn đã xác nhận và chưa check-in.");
+        if (string.IsNullOrWhiteSpace(trimmed) || !(string.Equals(trimmed, d.MaDatSan, StringComparison.Ordinal) || string.Equals(trimmed, d.MaQrCheckin, StringComparison.Ordinal)))
+            throw new BusinessException("Mã đặt sân/QR không đúng đơn.");
+        var c = active.Single();
+        var now = Now;
+        if (now < VietnamTime.Start(c.NgaySuDung, c.GioBatDau).AddMinutes(-options.Value.CheckInEarlyMinutes) || now >= VietnamTime.End(c.NgaySuDung, c.GioKetThuc))
+            throw new BusinessException($"Ngoài thời gian được check-in (mở từ {options.Value.CheckInEarlyMinutes} phút trước giờ chơi đến hết giờ chơi).");
+        db.LichSuCheckIns.Add(new LichSuCheckIn { ChiTietDatSanId = c.Id, NhanVienCheckinId = actor, ThoiGianCheckin = now, PhuongThuc = string.Equals(trimmed, d.MaQrCheckin, StringComparison.Ordinal) ? "QR" : "THU_CONG" });
+        Transition(d, "DANG_SU_DUNG", "DA_CHECK_IN", now);
+    }
     public Task CheckIn(long actor,OrderActionForm f) => Locked(async()=>
     {
         var d=await Load(f.Id);await Require(actor,d.CoSoId,"CHECK_IN");Version(d,f.Version);
-        var active=ActiveSlots(d);
-        if(d.TrangThai!="DA_XAC_NHAN" || active.Count!=1 || active.Any(c=>c.TrangThaiSlot!="DA_XAC_NHAN")) throw new BusinessException("Chỉ check-in đơn đã xác nhận và chưa check-in.");
-        if(string.IsNullOrWhiteSpace(f.Code) || !(string.Equals(f.Code.Trim(),d.MaDatSan,StringComparison.Ordinal) || string.Equals(f.Code.Trim(),d.MaQrCheckin,StringComparison.Ordinal))) throw new BusinessException("Mã đặt sân/QR không đúng đơn.");
-        var c=active.Single();var now=Now;
-        if(now<VietnamTime.Start(c.NgaySuDung,c.GioBatDau).AddMinutes(-options.Value.CheckInEarlyMinutes) || now>=VietnamTime.End(c.NgaySuDung,c.GioKetThuc)) throw new BusinessException("Ngoài thời gian được check-in.");
-        db.LichSuCheckIns.Add(new LichSuCheckIn { ChiTietDatSanId=c.Id,NhanVienCheckinId=actor,ThoiGianCheckin=now,PhuongThuc=f.Code.Trim()==d.MaQrCheckin ? "QR":"THU_CONG" });
-        Transition(d,"DANG_SU_DUNG","DA_CHECK_IN",now);
+        ApplyCheckIn(d, actor, f.Code);
     });
+    public async Task<long> CheckInByCode(long actor, long facilityId, string? code)
+    {
+        long matchedId = 0;
+        await Locked(async () =>
+        {
+            await Require(actor, facilityId, "CHECK_IN");
+            var trimmed = code?.Trim();
+            if (string.IsNullOrWhiteSpace(trimmed) || trimmed.Length > 255)
+                throw new BusinessException("Vui lòng quét hoặc nhập mã QR / mã đặt sân hợp lệ.");
+            var d = await db.DonDatSans.Include(x => x.ChiTietDatSans)
+                .SingleOrDefaultAsync(x => x.CoSoId == facilityId && (x.MaQrCheckin == trimmed || x.MaDatSan == trimmed))
+                ?? throw new BusinessException("Không tìm thấy đơn phù hợp với mã QR/mã đặt sân tại cơ sở này.");
+            ApplyCheckIn(d, actor, trimmed);
+            matchedId = d.Id;
+        });
+        return matchedId;
+    }
     public Task Complete(long actor,OrderActionForm f) => Locked(async()=>
     {
         var d=await Load(f.Id);await Require(actor,d.CoSoId,"CHECK_IN");Version(d,f.Version);

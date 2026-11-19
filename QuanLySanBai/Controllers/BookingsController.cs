@@ -122,6 +122,7 @@ public class BookingsController(QuanLySanBaiContext db, BookingService service) 
 
     public async Task<IActionResult> Index() => View(await db.DonDatSans.AsNoTracking().Include(d => d.ChiTietDatSans).ThenInclude(c => c.San).Where(d => d.NguoiDungId == AccessService.UserId(User)).OrderByDescending(d => d.Id).Take(100).ToListAsync());
 
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     public async Task<IActionResult> Details([FromServices] RefundService refunds, long id)
     {
         var userId = AccessService.UserId(User);
@@ -140,6 +141,10 @@ public class BookingsController(QuanLySanBaiContext db, BookingService service) 
         ViewBag.CanCancel = !order.ThanhToanDons.Any(p => p.TrangThai == "THANH_CONG" || p.TrangThai == "DANG_XU_LY");
         ViewBag.ServerNow = now;
         ViewBag.CanPay = order.TrangThai is ("CHO_THANH_TOAN" or "DA_XAC_NHAN" or "DANG_SU_DUNG") && paid < (order.TongTienPhaiTra ?? 0m) && (order.TrangThai != "CHO_THANH_TOAN" || order.ThoiGianHetHanGiuCho > now);
+        if (order.TrangThai == "DA_XAC_NHAN" && !string.IsNullOrWhiteSpace(order.MaQrCheckin))
+        {
+            ViewBag.CheckInQrUri = QrCodeHelper.ToSvgDataUri(order.MaQrCheckin);
+        }
 
         if (order.TrangThai is ("CHO_THANH_TOAN" or "DA_XAC_NHAN") && activeSlot is not null && VietnamTime.Start(activeSlot.NgaySuDung, activeSlot.GioBatDau) > now)
         {

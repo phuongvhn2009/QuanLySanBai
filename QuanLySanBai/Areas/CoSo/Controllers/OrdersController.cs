@@ -18,7 +18,9 @@ public class OrdersController(QuanLySanBaiContext db,OperationService service) :
         if(!string.IsNullOrEmpty(status))q=q.Where(d=>d.TrangThai==status);
         if(!string.IsNullOrWhiteSpace(phone))q=q.Where(d=>d.SdtKhachHang.Contains(phone));
         var pages=Math.Max(1,(int)Math.Ceiling(await q.CountAsync()/20d));page=Math.Clamp(page,1,pages);
-        ViewBag.CanCreate=await db.CoSos.AnyAsync(c=>c.Id==facilityId && c.ChuSoHuuId==Actor) || await new AccessService(db).HasPermission(Actor,facilityId,"TAO_DON");
+        var access = new AccessService(db);
+        ViewBag.CanCreate = await db.CoSos.AnyAsync(c => c.Id == facilityId && c.ChuSoHuuId == Actor) || await access.HasPermission(Actor, facilityId, "TAO_DON");
+        ViewBag.CanCheckIn = await access.HasPermission(Actor, facilityId, "CHECK_IN");
         return View(new OperationList(await q.Include(d=>d.ChiTietDatSans).ThenInclude(c=>c.San).OrderByDescending(d=>d.Id).Skip((page-1)*20).Take(20).ToListAsync(),facilityId,page,pages,date,status,phone));
     }
     public async Task<IActionResult> Details([FromServices] RefundService refunds, long id)
@@ -46,6 +48,21 @@ public class OrdersController(QuanLySanBaiContext db,OperationService service) :
     [HttpPost] public async Task<IActionResult> Collect(CollectForm f) { if(!ModelState.IsValid) return BadRequest();await service.Collect(Actor,f);return Done(f.Id); }
     [HttpPost] public async Task<IActionResult> Confirm(OrderActionForm f) { if(!ModelState.IsValid)return BadRequest();await service.Confirm(Actor,f);return Done(f.Id); }
     [HttpPost] public async Task<IActionResult> CheckIn(OrderActionForm f) { if(!ModelState.IsValid)return BadRequest();await service.CheckIn(Actor,f);return Done(f.Id); }
+    [HttpPost]
+    public async Task<IActionResult> ScanCheckIn(long facilityId, string? code)
+    {
+        try
+        {
+            var orderId = await service.CheckInByCode(Actor, facilityId, code);
+            TempData["SuccessMessage"] = "Check-in bằng QR thành công!";
+            return RedirectToAction(nameof(Details), new { id = orderId });
+        }
+        catch (BusinessException ex)
+        {
+            TempData["ErrorMessage"] = ex.Message;
+            return RedirectToAction(nameof(Index), new { facilityId });
+        }
+    }
     [HttpPost] public async Task<IActionResult> Complete(OrderActionForm f) { if(!ModelState.IsValid)return BadRequest();await service.Complete(Actor,f);return Done(f.Id); }
     [HttpPost] public async Task<IActionResult> Cancel(OrderActionForm f) { if(!ModelState.IsValid)return BadRequest();await service.Cancel(Actor,f);return Done(f.Id); }
     [HttpPost] public async Task<IActionResult> CancelWithRefund([FromServices] RefundService refunds, OrderActionForm f) { if(!ModelState.IsValid)return BadRequest();await refunds.CancelWithRefund(Actor,f);return Done(f.Id); }

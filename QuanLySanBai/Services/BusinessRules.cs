@@ -52,6 +52,17 @@ public static class OrderFinance
         ?? policy.MucPhiHuyDois.OrderBy(m => m.SoGioTuTruocTran).FirstOrDefault();
 }
 
+public static class QrCodeHelper
+{
+    public static string ToSvgDataUri(string text)
+    {
+        using var generator = new QRCoder.QRCodeGenerator();
+        using var data = generator.CreateQrCode(text, QRCoder.QRCodeGenerator.ECCLevel.M);
+        var svg = new QRCoder.SvgQRCode(data).GetGraphic(6);
+        return "data:image/svg+xml;base64," + Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(svg));
+    }
+}
+
 public class BusinessErrorFilter(ILogger<BusinessErrorFilter> logger) : IExceptionFilter
 {
     public void OnException(ExceptionContext context)
