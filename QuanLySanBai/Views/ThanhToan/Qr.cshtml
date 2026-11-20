@@ -134,9 +134,21 @@
 
             <div class="col-lg-5">
                 <div class="card p-4">
-                    <h2 class="h4 mt-0 mb-1">Quét mã QR để thanh toán</h2>
+                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-1">
+                        <h2 class="h4 mt-0 mb-0">Quét mã QR để thanh toán</h2>
+                        @if (!Model.IsExpired)
+                        {
+                            <span class="sb-pill sb-pill-info"><span class="sb-live-dot" aria-hidden="true"></span>Chờ xác nhận</span>
+                        }
+                    </div>
                     <div class="small text-muted">Số tiền chuyển khoản</div>
-                    <div class="fs-2 fw-bold text-danger mb-3">@Model.Amount.ToString("N0") đ</div>
+                    <div class="d-flex align-items-center gap-2 flex-wrap mb-3">
+                        <span class="fs-2 fw-bold text-danger">@Model.Amount.ToString("N0") đ</span>
+                        <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2" style="min-height:28px;"
+                                onclick="navigator.clipboard?.writeText('@((long)Model.Amount)'); this.textContent='✓ Đã chép'; setTimeout(() => this.textContent='Sao chép', 1500);">
+                            Sao chép
+                        </button>
+                    </div>
 
                     <div class="mb-3">
                         @if (!string.IsNullOrEmpty(Model.QrImageUrl))
@@ -154,7 +166,16 @@
                     <div class="fw-bold small mb-2">Thông tin chuyển khoản</div>
                     <div class="small text-muted">Ngân hàng / Tài khoản</div>
                     <div class="fw-bold mb-2">
-                        @Model.BankName (@Model.BankCode) · @(string.IsNullOrEmpty(Model.AccountNumber) ? "(Chưa cấu hình)" : Model.AccountNumber)
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                            <span>@Model.BankName (@Model.BankCode) · @(string.IsNullOrEmpty(Model.AccountNumber) ? "(Chưa cấu hình)" : Model.AccountNumber)</span>
+                            @if (!string.IsNullOrEmpty(Model.AccountNumber))
+                            {
+                                <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2" style="min-height:28px;"
+                                        onclick="navigator.clipboard?.writeText('@Model.AccountNumber'); this.textContent='✓ Đã chép'; setTimeout(() => this.textContent='Sao chép STK', 1500);">
+                                    Sao chép STK
+                                </button>
+                            }
+                        </div>
                         @if (!string.IsNullOrEmpty(Model.AccountName))
                         {
                             <div class="small text-muted fw-normal">@Model.AccountName</div>
@@ -165,11 +186,18 @@
                     <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
                         <strong class="text-primary fs-6" id="transferContent">@Model.TransferContent</strong>
                         <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2" style="min-height:28px;"
-                                onclick="navigator.clipboard?.writeText('@Model.TransferContent'); this.textContent='Đã sao chép!'; setTimeout(() => this.textContent='Sao chép', 1500);">
+                                onclick="navigator.clipboard?.writeText('@Model.TransferContent'); this.textContent='✓ Đã chép'; setTimeout(() => this.textContent='Sao chép', 1500);">
                             Sao chép
                         </button>
                     </div>
-                    <p class="small text-muted mb-3">Vui lòng giữ nguyên nội dung để hệ thống đối soát giao dịch tự động.</p>
+                    <p class="small text-muted mb-2">Vui lòng giữ nguyên nội dung để hệ thống đối soát giao dịch tự động.</p>
+                    @if (!Model.IsExpired)
+                    {
+                        <div class="sb-info-banner py-2 mb-3 d-flex align-items-center gap-2">
+                            <span class="sb-live-dot" aria-hidden="true"></span>
+                            <span>Đang tự động chờ ngân hàng xác nhận — không cần tải lại trang.</span>
+                        </div>
+                    }
 
                     @if (!Model.IsExpired)
                     {

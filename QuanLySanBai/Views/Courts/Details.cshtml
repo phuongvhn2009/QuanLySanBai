@@ -46,10 +46,10 @@
 
 <div class="row g-4 mb-4 align-items-start">
     <div class="col-lg-5">
-        <div class="sb-gallery-main">
+        <div class="sb-gallery-main is-zoomable" id="courtGalleryZoomTrigger" role="button" tabindex="0" aria-label="Phóng to ảnh sân">
             <img id="courtGalleryMainImg" src="@gallery[0].Url" alt="@Model.Court.TenSan — @Model.Court.LoaiSan.TenLoai" />
             <span class="sb-photo-source-tag @(hasRealPhotos ? "is-real" : "is-default")" id="courtGalleryTag">
-                @(hasRealPhotos ? $"Ảnh thực tế của cơ sở ({gallery.Count} ảnh)" : "Ảnh minh họa loại sân")
+                @(hasRealPhotos ? $"Ảnh thực tế ({gallery.Count} ảnh) · Bấm để phóng to" : "Ảnh minh họa loại sân · Bấm để phóng to")
             </span>
         </div>
         @if (gallery.Count > 1)
@@ -57,7 +57,7 @@
             <div class="sb-gallery-thumbs" role="list" aria-label="Thư viện ảnh sân">
                 @for (int i = 0; i < gallery.Count; i++)
                 {
-                    <button type="button" class="sb-gallery-thumb @(i == 0 ? "is-active" : "")" data-gallery-src="@gallery[i].Url" data-gallery-label="@gallery[i].Label" aria-label="Xem @gallery[i].Label">
+                    <button type="button" class="sb-gallery-thumb @(i == 0 ? "is-active" : "")" data-gallery-idx="@i" data-gallery-src="@gallery[i].Url" data-gallery-label="@gallery[i].Label" aria-label="Xem @gallery[i].Label">
                         <img src="@gallery[i].Url" alt="@gallery[i].Label" loading="lazy" />
                     </button>
                 }
@@ -122,7 +122,7 @@
     {
         var timeRange = $"{k.Start:HH\\:mm}–{(k.End == TimeOnly.MinValue ? "24:00" : k.End.ToString("HH:mm"))}";
         var hasMine = mySlotOrders.TryGetValue(k.SlotId, out var mine);
-        var cardClass = k.CanBook ? "is-open" : hasMine ? "is-mine" : "is-disabled";
+        var cardClass = k.CanBook ? "is-open sb-card-interactive" : hasMine ? "is-mine" : "is-disabled";
         <div class="col-md-6">
             <article class="slot-card @cardClass h-100 d-flex flex-column justify-content-between gap-2">
                 <div class="d-flex justify-content-between align-items-start gap-2">
@@ -321,15 +321,88 @@
     </div>
 }
 
+<div class="modal fade" id="courtLightboxModal" tabindex="-1" aria-labelledby="courtLightboxCaption" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content" style="background:#101820;color:#fff;border:1px solid rgba(255,255,255,.12);">
+            <div class="modal-header border-0 pb-2">
+                <div class="small" id="courtLightboxCaption">@Model.Court.TenSan</div>
+                <div class="d-flex align-items-center gap-2 ms-auto">
+                    <span class="small opacity-75" id="courtLightboxCounter"></span>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Đóng"></button>
+                </div>
+            </div>
+            <div class="modal-body pt-0 text-center position-relative">
+                <img id="courtLightboxImg" src="@gallery[0].Url" alt="@Model.Court.TenSan" class="img-fluid rounded" style="max-height:72vh;object-fit:contain;" />
+                @if (gallery.Count > 1)
+                {
+                    <div class="d-flex justify-content-between mt-3">
+                        <button type="button" class="btn btn-sm btn-outline-light" id="courtLightboxPrev">‹ Trước</button>
+                        <button type="button" class="btn btn-sm btn-outline-light" id="courtLightboxNext">Sau ›</button>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
 @section Scripts {
     <script>
         (() => {
             const mainImg = document.getElementById('courtGalleryMainImg');
-            document.querySelectorAll('[data-gallery-src]').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    if (mainImg) mainImg.src = btn.dataset.gallerySrc;
-                    document.querySelectorAll('[data-gallery-src]').forEach(b => b.classList.toggle('is-active', b === btn));
+            const zoomTrigger = document.getElementById('courtGalleryZoomTrigger');
+            const thumbs = [...document.querySelectorAll('[data-gallery-src]')];
+            const items = thumbs.length > 0
+                ? thumbs.map(b => ({ src: b.dataset.gallerySrc, label: b.dataset.galleryLabel || '' }))
+                : (mainImg ? [{ src: mainImg.src, label: '@Model.Court.TenSan' }] : []);
+            let activeIdx = 0;
+
+            function setMainImage(idx) {
+                if (!mainImg || !items.length) return;
+                activeIdx = (idx + items.length) % items.length;
+                mainImg.style.opacity = '0.35';
+                setTimeout(() => {
+                    mainImg.src = items[activeIdx].src;
+                    mainImg.style.opacity = '1';
+                }, 90);
+                thumbs.forEach((b, i) => b.classList.toggle('is-active', i === activeIdx));
+            }
+
+            thumbs.forEach((btn, idx) => {
+                btn.addEventListener('click', () => setMainImage(idx));
+            });
+
+            const lbEl = document.getElementById('courtLightboxModal');
+            const lbImg = document.getElementById('courtLightboxImg');
+            const lbCap = document.getElementById('courtLightboxCaption');
+            const lbCnt = document.getElementById('courtLightboxCounter');
+            const lbPrev = document.getElementById('courtLightboxPrev');
+            const lbNext = document.getElementById('courtLightboxNext');
+
+            function syncLightbox() {
+                if (!lbImg || !items.length) return;
+                lbImg.src = items[activeIdx].src;
+                if (lbCap) lbCap.textContent = items[activeIdx].label || '@Model.Court.TenSan';
+                if (lbCnt) lbCnt.textContent = items.length > 1 ? `${activeIdx + 1} / ${items.length}` : '';
+            }
+
+            function openLightbox() {
+                if (!lbEl || !window.bootstrap || !items.length) return;
+                syncLightbox();
+                window.bootstrap.Modal.getOrCreateInstance(lbEl).show();
+            }
+
+            if (zoomTrigger) {
+                zoomTrigger.addEventListener('click', openLightbox);
+                zoomTrigger.addEventListener('keydown', e => {
+                    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openLightbox(); }
                 });
+            }
+            lbPrev?.addEventListener('click', () => { setMainImage(activeIdx - 1); syncLightbox(); });
+            lbNext?.addEventListener('click', () => { setMainImage(activeIdx + 1); syncLightbox(); });
+            lbEl?.addEventListener('keydown', e => {
+                if (items.length <= 1) return;
+                if (e.key === 'ArrowLeft') { setMainImage(activeIdx - 1); syncLightbox(); }
+                if (e.key === 'ArrowRight') { setMainImage(activeIdx + 1); syncLightbox(); }
             });
 
             const modalEl = document.getElementById('bookingModal');

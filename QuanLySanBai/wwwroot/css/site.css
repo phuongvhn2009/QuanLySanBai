@@ -17,6 +17,10 @@
     --sb-warning: #86520A;
     --sb-warning-soft: #FFF3D9;
     --sb-brand-red: #E50914;
+    --sb-shadow-xs: 0 1px 2px rgba(22, 44, 59, .05);
+    --sb-shadow-sm: 0 4px 12px rgba(22, 44, 59, .06);
+    --sb-shadow-md: 0 10px 28px rgba(22, 44, 59, .10);
+    --sb-ease: cubic-bezier(.22, 1, .36, 1);
     --app-ink: var(--sb-ink);
     --app-muted: var(--sb-muted);
     --app-border: var(--sb-border);
@@ -39,8 +43,14 @@ a { color: var(--sb-primary-hover); text-underline-offset: 3px; }
 
 /* Navigation — Figma Bản sửa */
 .app-nav {
-    background: var(--sb-surface);
+    position: sticky;
+    top: 0;
+    z-index: 1020;
+    background: rgba(255, 255, 255, .92);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
     border-bottom: 1px solid var(--sb-border);
+    box-shadow: 0 1px 0 var(--sb-border), 0 4px 16px rgba(22, 44, 59, .03);
     min-height: 76px;
 }
 .sb-brand {
@@ -61,6 +71,11 @@ a { color: var(--sb-primary-hover); text-underline-offset: 3px; }
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+    transition: transform .22s var(--sb-ease), box-shadow .22s var(--sb-ease);
+}
+.sb-brand:hover .sb-brand-mark {
+    transform: scale(1.06);
+    box-shadow: 0 4px 12px rgba(229, 9, 20, .28);
 }
 .app-nav .nav-link {
     border-radius: 6px;
@@ -105,7 +120,13 @@ a { color: var(--sb-primary-hover); text-underline-offset: 3px; }
     background: var(--sb-surface);
     border: 1px solid var(--sb-border);
     border-radius: 12px;
-    box-shadow: none;
+    box-shadow: var(--sb-shadow-xs);
+    transition: border-color .2s var(--sb-ease), box-shadow .22s var(--sb-ease), transform .22s var(--sb-ease);
+}
+.sb-card-interactive:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--sb-shadow-sm);
+    border-color: #9ecce5;
 }
 .action-row { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; }
 
@@ -115,9 +136,22 @@ a { color: var(--sb-primary-hover); text-underline-offset: 3px; }
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    gap: .4rem;
     padding: .5rem 1rem;
     font-weight: 600;
     font-size: .92rem;
+    transition: background .18s var(--sb-ease), border-color .18s var(--sb-ease), color .18s var(--sb-ease), transform .14s var(--sb-ease), box-shadow .18s var(--sb-ease);
+}
+.btn:active:not(:disabled) { transform: translateY(1px); }
+.btn.is-loading { pointer-events: none; opacity: .82; }
+.btn.is-loading::before {
+    content: "";
+    width: .9em;
+    height: .9em;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: sb-spin .65s linear infinite;
 }
 .btn-sm { min-height: 34px; padding: .35rem .75rem; font-size: .84rem; }
 .btn-primary {
@@ -129,6 +163,7 @@ a { color: var(--sb-primary-hover); text-underline-offset: 3px; }
     background: var(--sb-primary-hover);
     border-color: var(--sb-primary-hover);
     color: #fff;
+    box-shadow: 0 4px 12px rgba(18, 101, 143, .22);
 }
 .btn-outline-primary {
     color: var(--sb-primary-hover);
@@ -243,6 +278,12 @@ form .btn { margin-top: .25rem; }
     object-fit: cover;
     display: block;
 }
+.sb-court-thumb-wrap img {
+    transition: transform .35s var(--sb-ease);
+}
+.sb-court-list-card:hover .sb-court-thumb-wrap img {
+    transform: scale(1.045);
+}
 .sb-photo-source-tag {
     position: absolute;
     left: 6px;
@@ -273,7 +314,13 @@ form .btn { margin-top: .25rem; }
     overflow: hidden;
     background: #141414;
     border: 1px solid var(--sb-border);
+    box-shadow: var(--sb-shadow-xs);
 }
+.sb-gallery-main img {
+    transition: opacity .22s ease, transform .3s var(--sb-ease);
+}
+.sb-gallery-main.is-zoomable { cursor: zoom-in; }
+.sb-gallery-main.is-zoomable:hover img { transform: scale(1.02); }
 .sb-gallery-thumbs { display: flex; gap: .5rem; overflow-x: auto; padding-top: .5rem; }
 .sb-gallery-thumb {
     width: 84px;
@@ -285,7 +332,9 @@ form .btn { margin-top: .25rem; }
     background: #141414;
     flex-shrink: 0;
     cursor: pointer;
+    transition: border-color .16s var(--sb-ease), transform .16s var(--sb-ease);
 }
+.sb-gallery-thumb:hover { transform: translateY(-1px); }
 .sb-gallery-thumb.is-active { border-color: var(--sb-primary); }
 
 /* Search Master-Detail Slot Rows (Figma 43:784 & 43:868) */
@@ -294,11 +343,12 @@ form .btn { margin-top: .25rem; }
     border: 1px solid var(--sb-border);
     border-radius: 12px;
     padding: 1rem;
-    transition: border-color .15s, background .15s;
+    box-shadow: var(--sb-shadow-xs);
+    transition: border-color .18s var(--sb-ease), background .18s var(--sb-ease), box-shadow .22s var(--sb-ease), transform .22s var(--sb-ease);
 }
 .sb-court-list-card.is-selected {
     border-color: var(--sb-primary);
-    box-shadow: 0 0 0 1px var(--sb-primary);
+    box-shadow: 0 0 0 1px var(--sb-primary), var(--sb-shadow-sm);
     background: #FBFDFF;
 }
 .sb-slot-row {
@@ -310,20 +360,87 @@ form .btn { margin-top: .25rem; }
     border: 1px solid transparent;
     background: #F4F7FA;
     font-size: .92rem;
-    transition: border-color .15s, background .15s;
+    transition: border-color .18s var(--sb-ease), background .18s var(--sb-ease), transform .16s var(--sb-ease);
 }
 .sb-slot-row.is-open {
     background: var(--sb-surface);
     border-color: var(--sb-success);
     cursor: pointer;
 }
-.sb-slot-row.is-open:hover { background: var(--sb-success-soft); }
+.sb-slot-row.is-open:hover {
+    background: var(--sb-success-soft);
+    transform: translateX(2px);
+}
 .sb-slot-row.is-selected {
     background: var(--sb-primary-soft);
     border: 1.5px solid var(--sb-primary);
     font-weight: 600;
 }
 .sb-slot-row.is-disabled { opacity: .65; }
+
+/* Quick Sport Chips, Live Indicator, Toasts & Motion */
+.sb-sport-chips { display: flex; flex-wrap: wrap; gap: .45rem; }
+.sb-sport-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: .38rem .9rem;
+    border-radius: 999px;
+    border: 1px solid var(--sb-border);
+    background: var(--sb-surface);
+    color: var(--sb-ink-2);
+    font-size: .85rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: background .16s var(--sb-ease), border-color .16s var(--sb-ease), color .16s var(--sb-ease), transform .16s var(--sb-ease);
+}
+.sb-sport-chip:hover {
+    background: var(--sb-primary-soft);
+    border-color: var(--sb-primary);
+    color: var(--sb-ink);
+    transform: translateY(-1px);
+}
+.sb-sport-chip.is-active {
+    background: var(--sb-primary);
+    border-color: var(--sb-primary);
+    color: var(--sb-ink);
+}
+.sb-live-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--sb-success);
+    box-shadow: 0 0 0 0 rgba(22, 99, 66, .45);
+    animation: sb-pulse-dot 2s infinite;
+    flex-shrink: 0;
+}
+.sb-live-dot.is-warning {
+    background: #D99B26;
+    box-shadow: 0 0 0 0 rgba(217, 155, 38, .45);
+}
+.sb-toast-alert {
+    border-radius: 10px;
+    border-left-width: 4px;
+    box-shadow: var(--sb-shadow-sm);
+    animation: sb-fade-up .22s var(--sb-ease) both;
+}
+
+@keyframes sb-fade-up {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: none; }
+}
+@keyframes sb-spin {
+    to { transform: rotate(360deg); }
+}
+@keyframes sb-pulse-dot {
+    0% { box-shadow: 0 0 0 0 rgba(22, 99, 66, .45); }
+    70% { box-shadow: 0 0 0 7px rgba(22, 99, 66, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(22, 99, 66, 0); }
+}
+
+main#main-content > *:not(.modal) {
+    animation: sb-fade-up .24s var(--sb-ease) both;
+}
 
 /* Stepper & Choice Cards */
 .booking-stepper { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; font-size: .85rem; margin-bottom: 1.25rem; }
@@ -385,6 +502,9 @@ form .btn { margin-top: .25rem; }
     display: block;
 }
 
+@media (min-width: 992px) {
+    .sb-sticky-panel { position: sticky; top: 92px; }
+}
 @media (max-width: 991px) {
     .sb-court-thumb-wrap { width: 160px; }
 }
@@ -396,4 +516,15 @@ form .btn { margin-top: .25rem; }
     .date-pill { min-width: 72px; padding: .4rem .55rem; }
     .sb-court-thumb-wrap { width: 100%; }
     .sb-auth-hero { padding: 1.5rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: .01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .01ms !important;
+        scroll-behavior: auto !important;
+    }
+    .sb-card-interactive:hover, .sb-court-list-card:hover .sb-court-thumb-wrap img, .sb-gallery-main.is-zoomable:hover img {
+        transform: none !important;
+    }
 }

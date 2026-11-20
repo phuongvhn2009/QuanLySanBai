@@ -20,6 +20,21 @@
     <footer class="container py-4 text-muted small border-top mt-4">
         Sân Bãi · Hệ thống quản lý và đặt sân thể thao
     </footer>
+    <div class="modal fade" id="sbConfirmModal" tabindex="-1" aria-labelledby="sbConfirmTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-sm">
+            <div class="modal-content">
+                <div class="modal-header border-0 pb-1">
+                    <h2 class="modal-title h6 fw-bold mt-0 mb-0" id="sbConfirmTitle">Xác nhận thao tác</h2>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button>
+                </div>
+                <div class="modal-body pt-1 pb-3 small text-muted" id="sbConfirmMessage"></div>
+                <div class="modal-footer border-0 pt-0">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Hủy</button>
+                    <button type="button" class="btn btn-primary btn-sm" id="sbConfirmOk">Xác nhận</button>
+                </div>
+            </div>
+        </div>
+    </div>
     <script src="~/lib/jquery/dist/jquery.min.js"></script>
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
     <script src="~/js/site.js" asp-append-version="true"></script>

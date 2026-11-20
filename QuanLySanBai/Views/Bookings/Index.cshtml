@@ -1,27 +1,79 @@
 @model List<QuanLySanBai.Models.Entities.DonDatSan>
+@using QuanLySanBai.Services
 @{ ViewData["Title"] = "Đơn của tôi"; }
-<h1>Đơn của tôi</h1>
-<p class="text-muted">Hiển thị 100 đơn gần nhất.</p>
+
+<div class="page-heading mb-3">
+    <div>
+        <h1 class="mb-1">Đơn của tôi</h1>
+        <p class="text-muted mb-0">Theo dõi 100 đơn đặt sân gần nhất, thanh toán hoặc mở mã QR Check-in nhanh.</p>
+    </div>
+    <a asp-controller="Courts" asp-action="Index" class="btn btn-primary btn-sm">Tìm &amp; đặt sân mới</a>
+</div>
+
 @if (Model.Count == 0)
 {
-    <p class="text-muted">Bạn chưa có đơn đặt sân nào.</p>
+    <div class="empty-state my-3">
+        <h2 class="h5 mb-2">Bạn chưa có đơn đặt sân nào</h2>
+        <p class="text-muted mb-3">Chọn môn thể thao và tìm khung giờ phù hợp cho buổi chơi đầu tiên của bạn.</p>
+        <a asp-controller="Courts" asp-action="Index" class="btn btn-primary">Tìm sân ngay →</a>
+    </div>
 }
-@foreach (var d in Model)
+else
 {
-    var activeSlot = d.ChiTietDatSans.FirstOrDefault(c => c.TrangThaiSlot != "DA_DOI") ?? d.ChiTietDatSans.FirstOrDefault();
-    <div class="card p-3 mb-2">
-        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-            <div>
-                <a asp-action="Details" asp-route-id="@d.Id" class="fw-bold fs-6">@d.MaDatSan</a>
-                <span class="badge @(d.TrangThai == "CHO_THANH_TOAN" ? "bg-warning text-dark" : d.TrangThai == "DA_XAC_NHAN" ? "bg-success" : "bg-secondary") ms-2">@QuanLySanBai.Services.OrderLabels.Status(d.TrangThai)</span>
-                @if (activeSlot is not null)
-                {
-                    <div class="small text-muted mt-1">@activeSlot.San.TenSan · @activeSlot.NgaySuDung.ToString("dd/MM/yyyy") · @activeSlot.GioBatDau.ToString("HH:mm")–@(activeSlot.GioKetThuc == TimeOnly.MinValue ? "24:00" : activeSlot.GioKetThuc.ToString("HH:mm"))</div>
-                }
-            </div>
-            <div class="text-end">
-                <span class="fs-5 fw-semibold text-primary">@((d.TongTienPhaiTra ?? 0m).ToString("N0")) đ</span>
-            </div>
-        </div>
+    <div class="d-flex flex-column gap-3">
+        @foreach (var d in Model)
+        {
+            var activeSlot = d.ChiTietDatSans.FirstOrDefault(c => c.TrangThaiSlot != "DA_DOI") ?? d.ChiTietDatSans.FirstOrDefault();
+            var thumbUrl = activeSlot?.San is not null
+                ? CourtImageResolver.PrimaryForCourt(activeSlot.San).Url
+                : CourtImageResolver.PlaceholderUrl;
+            var pillClass = d.TrangThai switch
+            {
+                "CHO_THANH_TOAN" => "sb-pill-pending",
+                "DA_XAC_NHAN" or "DANG_SU_DUNG" or "HOAN_THANH" => "sb-pill-success",
+                "DA_HUY" or "HET_HAN" => "sb-pill-danger",
+                _ => "sb-pill-neutral"
+            };
+            <article class="card sb-card-interactive p-3">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
+                    <div class="d-flex align-items-center gap-3">
+                        <div class="sb-mini-thumb" style="width:88px;height:58px;">
+                            <img src="@thumbUrl" alt="@(activeSlot?.San?.TenSan ?? d.MaDatSan)" loading="lazy" />
+                        </div>
+                        <div>
+                            <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
+                                <a asp-action="Details" asp-route-id="@d.Id" class="fw-bold text-decoration-none">@d.MaDatSan</a>
+                                <span class="sb-pill @pillClass">@OrderLabels.Status(d.TrangThai)</span>
+                            </div>
+                            @if (activeSlot is not null)
+                            {
+                                <div class="small fw-semibold">@(d.CoSo?.TenCoSo) &bull; @activeSlot.San.TenSan</div>
+                                <div class="small text-muted">
+                                    @activeSlot.NgaySuDung.ToString("dd/MM/yyyy") &bull; @activeSlot.GioBatDau.ToString("HH:mm")–@(activeSlot.GioKetThuc == TimeOnly.MinValue ? "24:00" : activeSlot.GioKetThuc.ToString("HH:mm"))
+                                </div>
+                            }
+                        </div>
+                    </div>
+                    <div class="d-flex align-items-center gap-3 ms-auto">
+                        <div class="text-end">
+                            <div class="small text-muted">Tổng đơn</div>
+                            <div class="fs-5 fw-bold text-primary">@((d.TongTienPhaiTra ?? 0m).ToString("N0")) đ</div>
+                        </div>
+                        @if (d.TrangThai == "CHO_THANH_TOAN")
+                        {
+                            <a asp-controller="ThanhToan" asp-action="Index" asp-route-id="@d.Id" class="btn btn-primary btn-sm text-nowrap">Thanh toán ngay</a>
+                        }
+                        else if (d.TrangThai == "DA_XAC_NHAN")
+                        {
+                            <a asp-action="Details" asp-route-id="@d.Id" class="btn btn-outline-primary btn-sm text-nowrap">Mã QR Check-in</a>
+                        }
+                        else
+                        {
+                            <a asp-action="Details" asp-route-id="@d.Id" class="btn btn-outline-secondary btn-sm text-nowrap">Xem chi tiết</a>
+                        }
+                    </div>
+                </div>
+            </article>
+        }
     </div>
 }

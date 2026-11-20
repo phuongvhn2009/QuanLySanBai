@@ -4,6 +4,8 @@
 @{
     ViewData["Title"] = "Tìm sân";
     var currentPage = (int)ViewBag.Page;
+    var sports = (List<QuanLySanBai.Models.Entities.MonTheThao>)ViewBag.Sports;
+    var sportId = ViewBag.SportId as int?;
     var minPrices = ViewBag.MinPrices as Dictionary<long, decimal> ?? new();
     var preview = ViewBag.PreviewCalendar as CourtCalendar;
     var selectedCourtId = ViewBag.SelectedCourtId as long?;
@@ -16,15 +18,15 @@
     <p class="text-muted mb-0">Tìm sân theo môn thể thao, khu vực và ngày bạn muốn chơi.</p>
 </div>
 
-<form method="get" class="card p-3 p-md-4 mb-4">
+<form method="get" class="card p-3 p-md-4 mb-3">
     <div class="row g-3 align-items-end">
         <div class="col-md-3">
             <label class="form-label small fw-semibold text-muted mb-1" for="filterSport">Môn thể thao</label>
             <select id="filterSport" name="sportId" class="form-select">
                 <option value="">Tất cả môn</option>
-                @foreach (var m in (List<QuanLySanBai.Models.Entities.MonTheThao>)ViewBag.Sports)
+                @foreach (var m in sports)
                 {
-                    <option value="@m.Id" selected="@(ViewBag.SportId == m.Id)">@m.TenMon</option>
+                    <option value="@m.Id" selected="@(sportId == m.Id)">@m.TenMon</option>
                 }
             </select>
         </div>
@@ -41,6 +43,16 @@
         </div>
     </div>
 </form>
+
+<div class="sb-sport-chips mb-4" aria-label="Lọc nhanh theo môn thể thao">
+    <a asp-action="Index" asp-route-area="@ViewBag.Area" asp-route-date="@(selectedDate?.ToString("yyyy-MM-dd"))"
+       class="sb-sport-chip @(sportId is null ? "is-active" : "")">Tất cả môn</a>
+    @foreach (var m in sports)
+    {
+        <a asp-action="Index" asp-route-sportId="@m.Id" asp-route-area="@ViewBag.Area" asp-route-date="@(selectedDate?.ToString("yyyy-MM-dd"))"
+           class="sb-sport-chip @(sportId == m.Id ? "is-active" : "")">@m.TenMon</a>
+    }
+</div>
 
 @if (Model.Count == 0)
 {
@@ -66,7 +78,7 @@ else
                     var img = CourtImageResolver.PrimaryForCourt(s);
                     var hasMinPrice = minPrices.TryGetValue(s.Id, out var minPrice);
                     var isSelected = selectedCourtId == s.Id;
-                    <article class="sb-court-list-card @(isSelected ? "is-selected" : "")">
+                    <article class="sb-court-list-card sb-card-interactive @(isSelected ? "is-selected" : "")">
                         <div class="d-flex flex-column flex-sm-row gap-3">
                             <div class="sb-court-thumb-wrap">
                                 <img src="@img.Url" alt="@s.TenSan — @s.LoaiSan.TenLoai" loading="lazy" />
@@ -137,7 +149,7 @@ else
         {
             var firstOpen = preview.Slots.FirstOrDefault(x => x.CanBook);
             <div class="col-lg-5">
-                <div class="card p-4" id="quickSlotPanel"
+                <div class="card p-4 sb-sticky-panel" id="quickSlotPanel"
                      data-wallet-balance="@((walletBalance ?? 0m).ToString(System.Globalization.CultureInfo.InvariantCulture))">
                     <div class="d-flex justify-content-between align-items-start gap-2 mb-1">
                         <h2 class="h5 m-0">@preview.Court.TenSan &bull; @preview.Court.LoaiSan.TenLoai</h2>
@@ -167,6 +179,7 @@ else
                                     @if (k.CanBook)
                                     {
                                         <span class="sb-pill @(isInitSelected ? "sb-pill-info" : "sb-pill-success")" data-slot-badge>
+                                            @if (!isInitSelected) { <span class="sb-live-dot" aria-hidden="true"></span> }
                                             @(isInitSelected ? "Đang chọn" : "Còn trống")
                                         </span>
                                     }
@@ -274,7 +287,7 @@ else
                     r.classList.toggle('is-selected', active);
                     const badge = r.querySelector('[data-slot-badge]');
                     if (badge) {
-                        badge.textContent = active ? 'Đang chọn' : 'Còn trống';
+                        badge.innerHTML = active ? 'Đang chọn' : '<span class="sb-live-dot" aria-hidden="true"></span> Còn trống';
                         badge.className = 'sb-pill ' + (active ? 'sb-pill-info' : 'sb-pill-success');
                     }
                 });
