@@ -13,36 +13,36 @@
     var selectedDate = ViewBag.Date as DateOnly?;
 }
 
-<div class="mb-4">
-    <h1 class="mb-1">Chọn sân. Hẹn giờ ra sân.</h1>
-    <p class="text-muted mb-0">Tìm sân theo môn thể thao, khu vực và ngày bạn muốn chơi.</p>
-</div>
+<section class="sb-search-hero" aria-labelledby="searchTitle">
+    <h1 id="searchTitle" class="mb-1">Chọn sân. Hẹn giờ ra sân.</h1>
+    <p class="mb-0">Tìm sân theo môn thể thao, khu vực và ngày bạn muốn chơi.</p>
 
-<form method="get" class="card p-3 p-md-4 mb-3">
-    <div class="row g-3 align-items-end">
-        <div class="col-md-3">
-            <label class="form-label small fw-semibold text-muted mb-1" for="filterSport">Môn thể thao</label>
-            <select id="filterSport" name="sportId" class="form-select">
-                <option value="">Tất cả môn</option>
-                @foreach (var m in sports)
-                {
-                    <option value="@m.Id" selected="@(sportId == m.Id)">@m.TenMon</option>
-                }
-            </select>
+    <form method="get" class="mt-3">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label small fw-semibold mb-1" for="filterSport">Môn thể thao</label>
+                <select id="filterSport" name="sportId" class="form-select">
+                    <option value="">Tất cả môn</option>
+                    @foreach (var m in sports)
+                    {
+                        <option value="@m.Id" selected="@(sportId == m.Id)">@m.TenMon</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label small fw-semibold mb-1" for="filterArea">Khu vực / địa chỉ</label>
+                <input id="filterArea" name="area" value="@ViewBag.Area" class="form-control" placeholder="Quận, huyện hoặc tên đường..." />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small fw-semibold mb-1" for="filterDate">Ngày còn chỗ</label>
+                <input id="filterDate" name="date" type="date" value="@(selectedDate?.ToString("yyyy-MM-dd"))" class="form-control" />
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary w-100">Tìm sân</button>
+            </div>
         </div>
-        <div class="col-md-4">
-            <label class="form-label small fw-semibold text-muted mb-1" for="filterArea">Khu vực / địa chỉ</label>
-            <input id="filterArea" name="area" value="@ViewBag.Area" class="form-control" placeholder="Quận, huyện hoặc tên đường..." />
-        </div>
-        <div class="col-md-3">
-            <label class="form-label small fw-semibold text-muted mb-1" for="filterDate">Ngày còn chỗ</label>
-            <input id="filterDate" name="date" type="date" value="@(selectedDate?.ToString("yyyy-MM-dd"))" class="form-control" />
-        </div>
-        <div class="col-md-2">
-            <button type="submit" class="btn btn-primary w-100">Tìm sân</button>
-        </div>
-    </div>
-</form>
+    </form>
+</section>
 
 <div class="sb-sport-chips mb-4" aria-label="Lọc nhanh theo môn thể thao">
     <a asp-action="Index" asp-route-area="@ViewBag.Area" asp-route-date="@(selectedDate?.ToString("yyyy-MM-dd"))"
@@ -94,7 +94,7 @@ else
                                         </h3>
                                         @if (hasMinPrice)
                                         {
-                                            <span class="fw-bold small text-nowrap">Từ @minPrice.ToString("N0") đ/giờ</span>
+                                            <span class="sb-price fs-5 text-nowrap">Từ @minPrice.ToString("N0") đ/giờ</span>
                                         }
                                     </div>
                                     <div class="small fw-semibold mb-1">@s.CoSo.TenCoSo</div>

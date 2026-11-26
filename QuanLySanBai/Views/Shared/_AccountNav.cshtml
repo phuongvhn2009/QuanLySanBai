@@ -11,7 +11,7 @@
     var role = admin ? "Quản trị viên" : owner ? "Chủ cơ sở" : hasFacilities ? "Nhân viên cơ sở" : "Khách hàng";
     var path = Context.Request.Path.Value ?? "";
 }
-<nav class="navbar navbar-expand-lg app-nav" aria-label="Điều hướng chính">
+<nav class="navbar navbar-expand-lg app-nav" data-bs-theme="dark" aria-label="Điều hướng chính">
     <div class="container">
         <a class="navbar-brand sb-brand" href="/">
             <span class="sb-brand-mark" aria-hidden="true">
@@ -34,35 +34,44 @@
             <div class="navbar-nav me-auto ms-lg-4 gap-1">
                 @if (admin)
                 {
-                    <a class="nav-link @(path == "/Admin" ? "active" : "")" href="/Admin">Tổng quan</a>
-                    <a class="nav-link @(path.Contains("Facilities") ? "active" : "")" href="/Admin/Management/Facilities">Duyệt cơ sở</a>
-                    <a class="nav-link @(path.Contains("Users") ? "active" : "")" href="/Admin/Management/Users">Người dùng</a>
-                    <a class="nav-link @(path.Contains("Catalog") ? "active" : "")" href="/Admin/Catalog">Danh mục thể thao</a>
-                    <a class="nav-link @(path.Contains("Payouts") ? "active" : "")" href="/Admin/Payouts">Tài chính</a>
+                    var isAdminHome = path == "/Admin";
+                    var isFacilities = path.Contains("Facilities");
+                    var isUsers = path.Contains("Users");
+                    var isCatalog = path.Contains("Catalog");
+                    var isPayouts = path.Contains("Payouts");
+                    <a class="nav-link @(isAdminHome ? "active" : "")" aria-current="@(isAdminHome ? "page" : null)" href="/Admin">Tổng quan</a>
+                    <a class="nav-link @(isFacilities ? "active" : "")" aria-current="@(isFacilities ? "page" : null)" href="/Admin/Management/Facilities">Duyệt cơ sở</a>
+                    <a class="nav-link @(isUsers ? "active" : "")" aria-current="@(isUsers ? "page" : null)" href="/Admin/Management/Users">Người dùng</a>
+                    <a class="nav-link @(isCatalog ? "active" : "")" aria-current="@(isCatalog ? "page" : null)" href="/Admin/Catalog">Danh mục thể thao</a>
+                    <a class="nav-link @(isPayouts ? "active" : "")" aria-current="@(isPayouts ? "page" : null)" href="/Admin/Payouts">Tài chính</a>
                 }
                 else
                 {
+                    var isCoSo = path.StartsWith("/CoSo");
+                    var isCourts = path.StartsWith("/Courts");
+                    var isBookings = path.StartsWith("/Bookings");
+                    var isWallet = path.StartsWith("/Wallet");
                     @if (hasFacilities)
                     {
-                        <a class="nav-link @(path.StartsWith("/CoSo") ? "active" : "")" href="/CoSo">@(owner ? "Quản lý cơ sở" : "Cơ sở làm việc")</a>
+                        <a class="nav-link @(isCoSo ? "active" : "")" aria-current="@(isCoSo ? "page" : null)" href="/CoSo">@(owner ? "Quản lý cơ sở" : "Cơ sở làm việc")</a>
                     }
                     else if (applications)
                     {
-                        <a class="nav-link @(path.StartsWith("/CoSo") ? "active" : "")" href="/CoSo">Đơn đăng ký cơ sở</a>
+                        <a class="nav-link @(isCoSo ? "active" : "")" aria-current="@(isCoSo ? "page" : null)" href="/CoSo">Đơn đăng ký cơ sở</a>
                     }
-                    <a class="nav-link @(path.StartsWith("/Courts") ? "active" : "")" href="/Courts">Tìm sân</a>
+                    <a class="nav-link @(isCourts ? "active" : "")" aria-current="@(isCourts ? "page" : null)" href="/Courts">Tìm sân</a>
                     @if (signedIn)
                     {
-                        <a class="nav-link @(path.StartsWith("/Bookings") ? "active" : "")" href="/Bookings">Lịch đặt của tôi</a>
-                        <a class="nav-link @(path.StartsWith("/Wallet") ? "active" : "")" href="/Wallet">Ví của tôi</a>
+                        <a class="nav-link @(isBookings ? "active" : "")" aria-current="@(isBookings ? "page" : null)" href="/Bookings">Lịch đặt của tôi</a>
+                        <a class="nav-link @(isWallet ? "active" : "")" aria-current="@(isWallet ? "page" : null)" href="/Wallet">Ví của tôi</a>
                     }
                 }
             </div>
             @if (signedIn)
             {
                 <div class="dropdown">
-                    <button class="btn btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">@User.Identity!.Name</button>
-                    <ul class="dropdown-menu dropdown-menu-end">
+                    <button class="btn btn-outline-light dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">@User.Identity!.Name</button>
+                    <ul class="dropdown-menu dropdown-menu-end" data-bs-theme="light">
                         <li class="dropdown-header d-sm-none">@role</li>
                         <li><a class="dropdown-item" href="/Account/Profile">Hồ sơ cá nhân</a></li>
                         @if (!admin && !hasFacilities && !applications)
@@ -82,7 +91,7 @@
             else
             {
                 <div class="d-flex gap-2">
-                    <a class="btn btn-outline-secondary" href="/Account/Login">Đăng nhập</a>
+                    <a class="btn btn-outline-light" href="/Account/Login">Đăng nhập</a>
                     <a class="btn btn-primary" href="/Account/Register">Tạo tài khoản</a>
                 </div>
             }

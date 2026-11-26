@@ -100,9 +100,9 @@
                 </form>
             </div>
             <div class="d-flex flex-wrap gap-3 mt-3 pt-2 border-top small text-muted">
-                <span><span class="status-dot" style="background:var(--sb-success);"></span>Còn trống (@openCount)</span>
-                <span><span class="status-dot" style="background:#D99B26;"></span>Đang giữ chỗ</span>
-                <span><span class="status-dot bg-secondary"></span>Đã đặt / Chưa mở</span>
+                <span><span class="status-dot is-open"></span>Còn trống (@openCount)</span>
+                <span><span class="status-dot is-held"></span>Đang giữ chỗ</span>
+                <span><span class="status-dot is-closed"></span>Đã đặt / Chưa mở</span>
                 <span class="ms-md-auto">Giờ Việt Nam (UTC+7) · 00:00 là 24:00</span>
             </div>
         </div>
@@ -142,7 +142,7 @@
                     <div class="text-end">
                         @if (k.Price.HasValue)
                         {
-                            <div class="fw-bold fs-5 @(k.CanBook ? "text-primary" : "text-muted")">@k.Price.Value.ToString("N0") đ</div>
+                            <div class="sb-price fs-4 @(k.CanBook ? "text-primary" : "text-muted")">@k.Price.Value.ToString("N0") đ</div>
                             <div class="small text-muted">Cọc từ @(k.Deposit?.ToString("N0") ?? "0") đ</div>
                         }
                         else
@@ -226,7 +226,7 @@
                     </div>
 
                     <div class="modal-body">
-                        <div class="p-3 rounded mb-3" style="background:var(--sb-surface-soft);border:1px solid var(--sb-border);">
+                        <div class="sb-summary-box mb-3">
                             <div class="d-flex justify-content-between small mb-1">
                                 <span class="text-muted">Ngày &amp; giờ chơi</span>
                                 <strong>@Model.Date.ToString("dd/MM/yyyy") · <span id="bmTime"></span></strong>
@@ -237,7 +237,7 @@
                             </div>
                             <div class="d-flex justify-content-between small">
                                 <span class="text-muted">Tiền cọc tối thiểu</span>
-                                <strong class="text-danger" id="bmDepositText"></strong>
+                                <strong class="text-body" id="bmDepositText"></strong>
                             </div>
                         </div>
 
@@ -323,7 +323,7 @@
 
 <div class="modal fade" id="courtLightboxModal" tabindex="-1" aria-labelledby="courtLightboxCaption" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-lg">
-        <div class="modal-content" style="background:#101820;color:#fff;border:1px solid rgba(255,255,255,.12);">
+        <div class="modal-content sb-lightbox-content">
             <div class="modal-header border-0 pb-2">
                 <div class="small" id="courtLightboxCaption">@Model.Court.TenSan</div>
                 <div class="d-flex align-items-center gap-2 ms-auto">
