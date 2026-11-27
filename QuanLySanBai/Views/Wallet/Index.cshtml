@@ -12,23 +12,35 @@
 
 <div class="row g-3 mb-4">
     <div class="col-md-6">
-        <div class="card p-4 h-100">
-            <h2 class="h5 text-muted">Số dư khả dụng</h2>
-            <p class="display-6 fw-bold text-success mb-1">@Model.Wallet.SoDuKhaDung.ToString("N0") đ</p>
-            <p class="mb-0 text-muted small">Số dư đang tạm giữ (chờ duyệt rút): <strong>@Model.Wallet.SoDuDongBang.ToString("N0") đ</strong> · Trạng thái ví: @Model.Wallet.TrangThai</p>
+        <div class="sb-soft-banner h-100 d-flex flex-column justify-content-center">
+            <h2 class="h6 text-muted mt-0 mb-1">Số dư khả dụng</h2>
+            <p class="display-6 fw-bold text-success mb-2">@Model.Wallet.SoDuKhaDung.ToString("N0") đ</p>
+            <p class="mb-0 text-muted small">
+                Tạm giữ chờ duyệt rút: <strong>@Model.Wallet.SoDuDongBang.ToString("N0") đ</strong> &bull;
+                <span class="sb-pill sb-pill-info">@Model.Wallet.TrangThai</span>
+            </p>
         </div>
     </div>
     <div class="col-md-6">
         <div class="card p-4 h-100">
-            <h2 class="h5">Nạp tiền qua VietQR (SePay)</h2>
+            <h2 class="h5 mt-0">Nạp tiền qua VietQR (SePay)</h2>
             @if (!Model.SePayConfigured)
             {
                 <p class="text-warning small mb-2">Chưa cấu hình thông tin tài khoản MB Bank nhận tiền (SePay:AccountNumber).</p>
             }
+            <div class="d-flex flex-wrap gap-2 mb-3">
+                @foreach (var preset in new[] { 50000, 100000, 200000, 500000 })
+                {
+                    <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2" style="min-height:30px;"
+                            onclick="document.getElementById('walletDepositAmount').value='@preset';">
+                        @preset.ToString("N0") đ
+                    </button>
+                }
+            </div>
             <form asp-action="NapTien" method="post" class="d-flex gap-2 align-items-end flex-wrap">
                 <label class="flex-grow-1 mb-0">
                     Số tiền muốn nạp (đ)
-                    <input type="number" name="Amount" min="1000" max="100000000" step="1000" value="100000" class="form-control" required />
+                    <input type="number" id="walletDepositAmount" name="Amount" min="1000" max="100000000" step="1000" value="100000" class="form-control" required />
                 </label>
                 <button type="submit" class="btn btn-primary">Tạo mã QR nạp ví</button>
             </form>
@@ -107,9 +119,11 @@ else
                 <tbody>
                     @foreach (var t in Model.Transactions)
                     {
+                        var txPill = t.LoaiGiaoDich is "NAP" or "HOAN" ? "sb-pill-success"
+                            : t.LoaiGiaoDich is "THANH_TOAN" or "RUT" ? "sb-pill-pending" : "sb-pill-neutral";
                         <tr>
                             <td>@t.NgayTao.ToString("dd/MM/yyyy HH:mm")</td>
-                            <td><span class="badge bg-secondary">@t.LoaiGiaoDich</span></td>
+                            <td><span class="sb-pill @txPill">@t.LoaiGiaoDich</span></td>
                             <td class="text-end fw-bold">@t.SoTien.ToString("N0") đ</td>
                             <td class="text-end">@t.SoDuTruoc.ToString("N0") đ</td>
                             <td class="text-end">@t.SoDuSau.ToString("N0") đ</td>

@@ -1,55 +1,308 @@
 @model List<QuanLySanBai.Models.Entities.San>
-@{ ViewData["Title"] = "Tìm sân"; var page = (int)ViewBag.Page; }
-<h1>Tìm sân</h1>
-<form method="get" class="border p-3 mb-3 rounded bg-light">
-    <div class="row g-2 align-items-end">
-        <div class="col-md-3">
-            <label class="form-label">Môn thể thao</label>
-            <select name="sportId" class="form-select">
-                <option value="">Tất cả môn</option>
-                @foreach (var m in (List<QuanLySanBai.Models.Entities.MonTheThao>)ViewBag.Sports)
-                {
-                    <option value="@m.Id" selected="@(ViewBag.SportId == m.Id)">@m.TenMon</option>
-                }
-            </select>
+@using QuanLySanBai.Services
+@using QuanLySanBai.ViewModels
+@{
+    ViewData["Title"] = "Tìm sân";
+    var currentPage = (int)ViewBag.Page;
+    var sports = (List<QuanLySanBai.Models.Entities.MonTheThao>)ViewBag.Sports;
+    var sportId = ViewBag.SportId as int?;
+    var minPrices = ViewBag.MinPrices as Dictionary<long, decimal> ?? new();
+    var preview = ViewBag.PreviewCalendar as CourtCalendar;
+    var selectedCourtId = ViewBag.SelectedCourtId as long?;
+    var walletBalance = ViewBag.WalletBalance as decimal?;
+    var selectedDate = ViewBag.Date as DateOnly?;
+}
+
+<section class="sb-search-hero" aria-labelledby="searchTitle">
+    <h1 id="searchTitle" class="mb-1">Chọn sân. Hẹn giờ ra sân.</h1>
+    <p class="mb-0">Tìm sân theo môn thể thao, khu vực và ngày bạn muốn chơi.</p>
+
+    <form method="get" class="mt-3">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label small fw-semibold mb-1" for="filterSport">Môn thể thao</label>
+                <select id="filterSport" name="sportId" class="form-select">
+                    <option value="">Tất cả môn</option>
+                    @foreach (var m in sports)
+                    {
+                        <option value="@m.Id" selected="@(sportId == m.Id)">@m.TenMon</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label small fw-semibold mb-1" for="filterArea">Khu vực / địa chỉ</label>
+                <input id="filterArea" name="area" value="@ViewBag.Area" class="form-control" placeholder="Quận, huyện hoặc tên đường..." />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small fw-semibold mb-1" for="filterDate">Ngày còn chỗ</label>
+                <input id="filterDate" name="date" type="date" value="@(selectedDate?.ToString("yyyy-MM-dd"))" class="form-control" />
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary w-100">Tìm sân</button>
+            </div>
         </div>
-        <div class="col-md-4">
-            <label class="form-label">Khu vực / địa chỉ</label>
-            <input name="area" value="@ViewBag.Area" class="form-control" placeholder="Quận, huyện hoặc tên đường..." />
-        </div>
-        <div class="col-md-3">
-            <label class="form-label">Ngày còn chỗ</label>
-            <input name="date" type="date" value="@(ViewBag.Date?.ToString("yyyy-MM-dd"))" class="form-control" />
-        </div>
-        <div class="col-md-2">
-            <button class="btn btn-primary w-100">Tìm kiếm</button>
-        </div>
-    </div>
-</form>
+    </form>
+</section>
+
+<div class="sb-sport-chips mb-4" aria-label="Lọc nhanh theo môn thể thao">
+    <a asp-action="Index" asp-route-area="@ViewBag.Area" asp-route-date="@(selectedDate?.ToString("yyyy-MM-dd"))"
+       class="sb-sport-chip @(sportId is null ? "is-active" : "")">Tất cả môn</a>
+    @foreach (var m in sports)
+    {
+        <a asp-action="Index" asp-route-sportId="@m.Id" asp-route-area="@ViewBag.Area" asp-route-date="@(selectedDate?.ToString("yyyy-MM-dd"))"
+           class="sb-sport-chip @(sportId == m.Id ? "is-active" : "")">@m.TenMon</a>
+    }
+</div>
+
 @if (Model.Count == 0)
 {
-    <p class="text-muted">Không có sân phù hợp trên trang này.</p>
+    <div class="empty-state">
+        <h2 class="h5 mb-2">Không có sân phù hợp</h2>
+        <p class="text-muted mb-3">Thử đổi ngày chơi, bỏ lọc khu vực hoặc chọn môn thể thao khác.</p>
+        <a asp-action="Index" class="btn btn-outline-secondary btn-sm">Xem tất cả sân</a>
+    </div>
 }
-@foreach (var s in Model)
+else
 {
-    <article class="card p-3 mb-3">
-        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-            <div>
-                <h2 class="h5 mb-1">@s.TenSan · @s.CoSo.TenCoSo</h2>
-                <p class="text-muted mb-0">
-                    @s.CoSo.DiaChi · @s.LoaiSan.MonTheThao.TenMon@(s.DangBaoTri ? " · Đang bảo trì" : "")
-                </p>
+    <div class="row g-4 align-items-start">
+        <!-- Left: Danh sách sân phù hợp -->
+        <div class="col-lg-7">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h2 class="h5 m-0">Sân phù hợp</h2>
+                <span class="small text-muted">@Model.Count sân trên trang @currentPage</span>
             </div>
-            <div>
-                <a asp-action="Details" asp-route-id="@s.Id" asp-route-date="@(ViewBag.Date?.ToString("yyyy-MM-dd"))" class="btn btn-outline-primary btn-sm">Xem lịch và đặt sân</a>
+
+            <div class="d-flex flex-column gap-3">
+                @foreach (var s in Model)
+                {
+                    var img = CourtImageResolver.PrimaryForCourt(s);
+                    var hasMinPrice = minPrices.TryGetValue(s.Id, out var minPrice);
+                    var isSelected = selectedCourtId == s.Id;
+                    <article class="sb-court-list-card sb-card-interactive @(isSelected ? "is-selected" : "")">
+                        <div class="d-flex flex-column flex-sm-row gap-3">
+                            <div class="sb-court-thumb-wrap">
+                                <img src="@img.Url" alt="@s.TenSan — @s.LoaiSan.TenLoai" loading="lazy" />
+                                <span class="sb-photo-source-tag @(img.IsRealPhoto ? "is-real" : "is-default")">
+                                    @(img.IsRealPhoto ? (img.PhotoCount > 1 ? $"Ảnh thực tế ({img.PhotoCount})" : "Ảnh thực tế") : "Minh họa loại sân")
+                                </span>
+                            </div>
+                            <div class="flex-grow-1 d-flex flex-column justify-content-between">
+                                <div>
+                                    <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+                                        <h3 class="h6 fw-bold mb-1">
+                                            @s.TenSan &bull; @s.LoaiSan.TenLoai
+                                        </h3>
+                                        @if (hasMinPrice)
+                                        {
+                                            <span class="sb-price fs-5 text-nowrap">Từ @minPrice.ToString("N0") đ/giờ</span>
+                                        }
+                                    </div>
+                                    <div class="small fw-semibold mb-1">@s.CoSo.TenCoSo</div>
+                                    <div class="small text-muted mb-2">
+                                        @s.CoSo.DiaChi &bull; @s.LoaiSan.MonTheThao.TenMon
+                                        @if (s.DangBaoTri)
+                                        {
+                                            <span class="sb-pill sb-pill-pending ms-1">Đang bảo trì</span>
+                                        }
+                                    </div>
+                                </div>
+                                <div class="d-flex flex-wrap gap-2 mt-1">
+                                    <a asp-action="Details" asp-route-id="@s.Id" asp-route-date="@(selectedDate?.ToString("yyyy-MM-dd"))" class="btn btn-outline-secondary btn-sm">Xem lịch và đặt sân</a>
+                                    @if (!isSelected)
+                                    {
+                                        <a asp-action="Index"
+                                           asp-route-sportId="@ViewBag.SportId"
+                                           asp-route-area="@ViewBag.Area"
+                                           asp-route-date="@(selectedDate?.ToString("yyyy-MM-dd"))"
+                                           asp-route-selectedCourtId="@s.Id"
+                                           asp-route-page="@currentPage"
+                                           class="btn btn-sm btn-outline-primary">Xem khung giờ</a>
+                                    }
+                                    else
+                                    {
+                                        <span class="sb-pill sb-pill-info">Đang xem lịch bên cạnh</span>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </article>
+                }
+            </div>
+
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-3">
+                <div class="d-flex gap-2">
+                    @if (currentPage > 1)
+                    {
+                        <a asp-route-page="@(currentPage - 1)" asp-route-area="@ViewBag.Area" asp-route-sportId="@ViewBag.SportId" asp-route-date="@(selectedDate?.ToString("yyyy-MM-dd"))" class="btn btn-outline-secondary btn-sm">Trang trước</a>
+                    }
+                    @if (Model.Count == 24)
+                    {
+                        <a asp-route-page="@(currentPage + 1)" asp-route-area="@ViewBag.Area" asp-route-sportId="@ViewBag.SportId" asp-route-date="@(selectedDate?.ToString("yyyy-MM-dd"))" class="btn btn-outline-secondary btn-sm">Trang sau</a>
+                    }
+                </div>
+                <span class="small text-muted">Chọn "Xem lịch và đặt sân" để xem đầy đủ thư viện ảnh và lịch theo ngày.</span>
             </div>
         </div>
-    </article>
+
+        <!-- Right: Bảng chọn nhanh khung giờ (Master-Detail theo Figma 43:784 & 43:868) -->
+        @if (preview is not null)
+        {
+            var firstOpen = preview.Slots.FirstOrDefault(x => x.CanBook);
+            <div class="col-lg-5">
+                <div class="card p-4 sb-sticky-panel" id="quickSlotPanel"
+                     data-wallet-balance="@((walletBalance ?? 0m).ToString(System.Globalization.CultureInfo.InvariantCulture))">
+                    <div class="d-flex justify-content-between align-items-start gap-2 mb-1">
+                        <h2 class="h5 m-0">@preview.Court.TenSan &bull; @preview.Court.LoaiSan.TenLoai</h2>
+                        <a asp-action="Details" asp-route-id="@preview.Court.Id" asp-route-date="@preview.Date.ToString("yyyy-MM-dd")" class="small text-nowrap">Chi tiết →</a>
+                    </div>
+                    <p class="small text-muted mb-3">@preview.Court.CoSo.TenCoSo · Ngày <strong>@preview.Date.ToString("dd/MM/yyyy")</strong></p>
+
+                    <div class="small fw-bold mb-2">Chọn một khung giờ</div>
+                    @if (preview.Slots.Count == 0)
+                    {
+                        <p class="small text-muted">Cơ sở chưa cấu hình khung giờ cho sân này.</p>
+                    }
+                    else
+                    {
+                        <div class="d-flex flex-column gap-2 mb-3">
+                            @foreach (var k in preview.Slots)
+                            {
+                                var timeStr = $"{k.Start:HH\\:mm} – {(k.End == TimeOnly.MinValue ? "24:00" : k.End.ToString("HH:mm"))}";
+                                var isInitSelected = firstOpen is not null && firstOpen.SlotId == k.SlotId;
+                                var rowClass = isInitSelected ? "is-open is-selected" : k.CanBook ? "is-open" : "is-disabled";
+                                <div class="sb-slot-row @rowClass"
+                                     @if (k.CanBook)
+                                     {
+                                         <text>role="button" tabindex="0" data-quick-slot data-slot-id="@k.SlotId" data-time="@timeStr" data-price="@((k.Price ?? 0m).ToString(System.Globalization.CultureInfo.InvariantCulture))" data-deposit="@((k.Deposit ?? 0m).ToString(System.Globalization.CultureInfo.InvariantCulture))"</text>
+                                     }>
+                                    <span>@timeStr</span>
+                                    @if (k.CanBook)
+                                    {
+                                        <span class="sb-pill @(isInitSelected ? "sb-pill-info" : "sb-pill-success")" data-slot-badge>
+                                            @if (!isInitSelected) { <span class="sb-live-dot" aria-hidden="true"></span> }
+                                            @(isInitSelected ? "Đang chọn" : "Còn trống")
+                                        </span>
+                                    }
+                                    else if (k.Status == "Đang giữ chỗ")
+                                    {
+                                        <span class="sb-pill sb-pill-pending">Đang giữ chỗ</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="small text-muted">@k.Status</span>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+
+                    <p class="small text-muted mb-3">Giờ Việt Nam (UTC+7). Chỗ trống được kiểm tra lại khi đặt.</p>
+                    <hr class="my-2" />
+
+                    @if (firstOpen is not null)
+                    {
+                        var initPrice = firstOpen.Price ?? 0m;
+                        var initDep = firstOpen.Deposit ?? 0m;
+                        <div class="d-flex justify-content-between small mb-1">
+                            <span class="text-muted">Khung đã chọn</span>
+                            <strong id="qsTime">@($"{firstOpen.Start:HH\\:mm} – {(firstOpen.End == TimeOnly.MinValue ? "24:00" : firstOpen.End.ToString("HH:mm"))}")</strong>
+                        </div>
+                        <div class="d-flex justify-content-between small mb-1">
+                            <span class="text-muted">Giá thuê</span>
+                            <strong id="qsPrice">@initPrice.ToString("N0") đ</strong>
+                        </div>
+                        <div class="d-flex justify-content-between small mb-3">
+                            <span class="text-muted">Cọc yêu cầu</span>
+                            <strong id="qsDeposit">@initDep.ToString("N0") đ</strong>
+                        </div>
+
+                        @if (User.Identity?.IsAuthenticated == true)
+                        {
+                            <form asp-controller="Bookings" asp-action="Create" method="post" id="quickBookForm">
+                                <input type="hidden" name="CourtId" value="@preview.Court.Id" />
+                                <input type="hidden" name="SlotId" id="qsSlotId" value="@firstOpen.SlotId" />
+                                <input type="hidden" name="Date" value="@preview.Date.ToString("yyyy-MM-dd")" />
+                                <div class="mb-2">
+                                    <label class="form-label small text-muted mb-1" for="qsPaymentChoice">Phương thức thanh toán</label>
+                                    <select id="qsPaymentChoice" name="PaymentChoice" class="form-select form-select-sm">
+                                        <option value="QR_COC">Chuyển khoản đặt cọc VietQR</option>
+                                        <option value="QR_FULL">Chuyển khoản toàn bộ VietQR</option>
+                                        <option value="VI_COC">Trừ Ví — Đặt cọc (thiếu tự tạo QR)</option>
+                                        <option value="VI_FULL">Trừ Ví — Toàn bộ (thiếu tự tạo QR)</option>
+                                        <option value="TAI_QUAY">Tạo đơn giữ chỗ — Trả tại quầy</option>
+                                    </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label small text-muted mb-1" for="qsNote">Ghi chú (tùy chọn)</label>
+                                    <input id="qsNote" name="Note" maxlength="1000" class="form-control form-control-sm" placeholder="Ví dụ: Liên hệ trước khi đến" />
+                                </div>
+                                <button type="submit" class="btn btn-primary w-100 mb-3">Tạo đơn giữ chỗ</button>
+                            </form>
+                        }
+                        else
+                        {
+                            <a href="/Account/Login?returnUrl=@Uri.EscapeDataString($"/Courts/Details/{preview.Court.Id}?date={preview.Date:yyyy-MM-dd}")" class="btn btn-primary w-100 mb-3">Đăng nhập để đặt sân</a>
+                        }
+                    }
+                    else
+                    {
+                        <div class="sb-info-banner mb-3">Ngày @preview.Date.ToString("dd/MM/yyyy") chưa còn khung trống trên sân này. Hãy chọn ngày khác trong trang chi tiết sân.</div>
+                        <a asp-action="Details" asp-route-id="@preview.Court.Id" asp-route-date="@preview.Date.AddDays(1).ToString("yyyy-MM-dd")" class="btn btn-outline-primary w-100 mb-3">Xem lịch ngày kế tiếp →</a>
+                    }
+
+                    <div class="sb-info-banner mb-2">
+                        Giữ chỗ tối đa theo cấu hình cơ sở. Hết hạn chưa thanh toán, khung giờ sẽ tự mở lại cho người khác.
+                    </div>
+                    @if (preview.Policy is not null)
+                    {
+                        <div class="small text-muted">
+                            <div class="fw-semibold">Chính sách hủy/đổi &bull; @preview.Policy.TenChinhSach</div>
+                            @foreach (var f in preview.Policy.MucPhiHuyDois.OrderBy(x => x.SoGioTuTruocTran).Take(3))
+                            {
+                                <div>@f.SoGioTuTruocTran–@(f.SoGioDenTruocTran?.ToString() ?? "∞") giờ trước buổi: phí hủy @f.TiLePhiHuy.ToString("0.##")%</div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    </div>
 }
-<div class="d-flex gap-2">
-    @if (page > 1)
-    {
-        <a asp-route-page="@(page - 1)" asp-route-area="@ViewBag.Area" asp-route-sportId="@ViewBag.SportId" asp-route-date="@(ViewBag.Date?.ToString("yyyy-MM-dd"))" class="btn btn-outline-secondary btn-sm">← Trang trước</a>
-    }
-    <a asp-route-page="@(page + 1)" asp-route-area="@ViewBag.Area" asp-route-sportId="@ViewBag.SportId" asp-route-date="@(ViewBag.Date?.ToString("yyyy-MM-dd"))" class="btn btn-outline-secondary btn-sm">Trang sau →</a>
-</div>
+
+@section Scripts {
+    <script>
+        (() => {
+            const panel = document.getElementById('quickSlotPanel');
+            if (!panel) return;
+            const rows = panel.querySelectorAll('[data-quick-slot]');
+            const slotInput = document.getElementById('qsSlotId');
+            const timeEl = document.getElementById('qsTime');
+            const priceEl = document.getElementById('qsPrice');
+            const depEl = document.getElementById('qsDeposit');
+            const fmt = n => Math.round(n).toLocaleString('vi-VN') + ' đ';
+
+            function selectRow(row) {
+                rows.forEach(r => {
+                    const active = r === row;
+                    r.classList.toggle('is-selected', active);
+                    const badge = r.querySelector('[data-slot-badge]');
+                    if (badge) {
+                        badge.innerHTML = active ? 'Đang chọn' : '<span class="sb-live-dot" aria-hidden="true"></span> Còn trống';
+                        badge.className = 'sb-pill ' + (active ? 'sb-pill-info' : 'sb-pill-success');
+                    }
+                });
+                if (slotInput) slotInput.value = row.dataset.slotId || '';
+                if (timeEl) timeEl.textContent = row.dataset.time || '';
+                if (priceEl) priceEl.textContent = fmt(Number(row.dataset.price || 0));
+                if (depEl) depEl.textContent = fmt(Number(row.dataset.deposit || 0));
+            }
+
+            rows.forEach(row => {
+                row.addEventListener('click', () => selectRow(row));
+                row.addEventListener('keydown', e => {
+                    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectRow(row); }
+                });
+            });
+        })();
+    </script>
+}

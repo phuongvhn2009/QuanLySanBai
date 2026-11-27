@@ -1,11 +1,39 @@
 @model QuanLySanBai.ViewModels.LoginModel
 @{ ViewData["Title"] = "Đăng nhập"; }
-<h1>Đăng nhập</h1>
-<form method="post" class="col-md-6">
-<div asp-validation-summary="All" class="text-danger" role="alert"></div>
-<input asp-for="ReturnUrl" type="hidden" />
-<div class="mb-3"><label asp-for="Login"></label><input asp-for="Login" class="form-control" autocomplete="username" /></div>
-<div class="mb-3"><label asp-for="Password"></label><input asp-for="Password" class="form-control" autocomplete="current-password" /></div>
-<div class="mb-3"><input asp-for="RememberMe" /><label asp-for="RememberMe"></label></div>
-<button class="btn btn-primary">Đăng nhập</button> <a asp-action="Register">Tạo tài khoản</a>
-</form>
+
+<div class="row g-4 align-items-stretch my-2">
+    <div class="col-lg-6">
+        <div class="sb-auth-hero">
+            <h1 class="display-6 fw-bold mb-3">Cuộc hẹn tiếp theo<br />bắt đầu từ đây.</h1>
+            <p class="text-muted mb-0">Tìm sân phù hợp. Chọn giờ bạn muốn.<br />Sẵn sàng cho buổi chơi tiếp theo.</p>
+            <div class="sb-auth-accent-line"></div>
+            <div class="small fw-semibold text-muted">Bóng đá &bull; Cầu lông &bull; Tennis &bull; Bóng rổ &bull; Pickleball</div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card p-4 p-md-5 h-100">
+            <h2 class="h3 mt-0 mb-1">Đăng nhập</h2>
+            <p class="text-muted small mb-4">Đồng hành cùng những buổi chơi đáng nhớ.</p>
+            <form method="post">
+                <div asp-validation-summary="All" class="text-danger small mb-3" role="alert"></div>
+                <input asp-for="ReturnUrl" type="hidden" />
+                <div class="mb-3">
+                    <label asp-for="Login" class="form-label fw-semibold small">Số điện thoại hoặc email</label>
+                    <input asp-for="Login" class="form-control" autocomplete="username" placeholder="Nhập số điện thoại hoặc email" />
+                </div>
+                <div class="mb-3">
+                    <label asp-for="Password" class="form-label fw-semibold small">Mật khẩu</label>
+                    <input asp-for="Password" class="form-control" autocomplete="current-password" placeholder="Nhập mật khẩu" />
+                </div>
+                <div class="form-check mb-4">
+                    <input asp-for="RememberMe" class="form-check-input" />
+                    <label asp-for="RememberMe" class="form-check-label small">Ghi nhớ đăng nhập</label>
+                </div>
+                <div class="d-grid gap-2">
+                    <button type="submit" class="btn btn-primary w-100">Đăng nhập</button>
+                    <a asp-action="Register" class="btn btn-outline-secondary w-100">Tạo tài khoản</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>

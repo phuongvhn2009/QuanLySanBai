@@ -1,8 +1,153 @@
 @model List<QuanLySanBai.Models.Entities.CoSo>
-@{ ViewData["Title"]="Duyệt cơ sở"; }
-<div class="page-heading"><div><h1>Duyệt cơ sở</h1><p class="text-muted">Kiểm tra thông tin cơ sở trước khi cho phép nhận đặt sân.</p></div></div>
-@if(Model.Count==0) { <div class="empty-state">Chưa có cơ sở cần quản lý.</div> }
-@foreach(var c in Model.OrderBy(c=>c.TrangThaiDuyet=="CHO_DUYET" ? 0 : 1)) { <article class="card p-4 mb-3"><div class="page-heading mb-2"><h2 class="h5 m-0">@c.TenCoSo</h2><span class="status-label">@(c.TrangThaiDuyet=="DA_DUYET" ? "Đã duyệt" : c.TrangThaiDuyet=="TU_CHOI" ? "Đã từ chối" : "Chờ duyệt")</span></div><p>@c.DiaChi</p><p class="text-muted">Chủ cơ sở: @c.ChuSoHuu.HoVaTen · @c.ChuSoHuu.SoDienThoai</p><div class="action-row">
-@if(c.TrangThaiDuyet!="DA_DUYET") { <form asp-action="Review" method="post"><input name="id" value="@c.Id" type="hidden" /><input name="decision" value="DA_DUYET" type="hidden" /><button class="btn btn-primary">Duyệt cơ sở</button></form> }
-@if(c.TrangThaiDuyet!="TU_CHOI") { <form asp-action="Review" method="post" data-confirm="Từ chối cơ sở này? Cơ sở sẽ không được nhận đặt sân mới."><input name="id" value="@c.Id" type="hidden" /><input name="decision" value="TU_CHOI" type="hidden" /><button class="btn btn-outline-danger">Từ chối cơ sở</button></form> }
-</div></article> }
+@using QuanLySanBai.Services
+@{
+    ViewData["Title"] = "Duyệt cơ sở";
+    var pendingCount = (int)(ViewBag.PendingCount ?? Model.Count(c => c.TrangThaiDuyet == "CHO_DUYET"));
+    var approvedCount = (int)(ViewBag.ApprovedCount ?? Model.Count(c => c.TrangThaiDuyet == "DA_DUYET"));
+    var totalCount = (int)(ViewBag.TotalCount ?? Model.Count);
+    var statusFilter = ViewBag.StatusFilter as string;
+}
+
+<div class="mb-4">
+    <h1 class="mb-1">Duyệt cơ sở</h1>
+    <p class="text-muted mb-0">Kiểm tra thông tin và hình ảnh thực tế trước khi cơ sở nhận đặt sân.</p>
+</div>
+
+<!-- 3 thẻ KPI theo Figma 43:1262 -->
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="sb-kpi-card">
+            <div class="small text-muted">Chờ duyệt</div>
+            <div class="sb-kpi-value">@pendingCount.ToString("00")</div>
+            <div class="small text-muted">Cần kiểm tra thông tin</div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="sb-kpi-card">
+            <div class="small text-muted">Đã duyệt</div>
+            <div class="sb-kpi-value">@approvedCount.ToString("00")</div>
+            <div class="small text-muted">Có thể nhận đặt sân</div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="sb-kpi-card">
+            <div class="small text-muted">Tổng cơ sở</div>
+            <div class="sb-kpi-value">@totalCount.ToString("00")</div>
+            <div class="small text-muted">Trong danh sách hiện tại</div>
+        </div>
+    </div>
+</div>
+
+<!-- Bộ lọc tab -->
+<div class="d-flex flex-wrap gap-2 mb-4">
+    <a asp-action="Facilities" class="btn btn-sm @(string.IsNullOrEmpty(statusFilter) ? "btn-primary" : "btn-outline-secondary")">Tất cả cơ sở (@totalCount)</a>
+    <a asp-action="Facilities" asp-route-status="CHO_DUYET" class="btn btn-sm @(statusFilter == "CHO_DUYET" ? "btn-primary" : "btn-outline-secondary")">Chờ duyệt (@pendingCount)</a>
+    <a asp-action="Facilities" asp-route-status="DA_DUYET" class="btn btn-sm @(statusFilter == "DA_DUYET" ? "btn-primary" : "btn-outline-secondary")">Đã duyệt (@approvedCount)</a>
+</div>
+
+<div class="card p-4 mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <h2 class="h5 m-0">Hồ sơ cơ sở</h2>
+        <span class="small text-muted">@Model.Count cơ sở hiển thị</span>
+    </div>
+
+    @if (Model.Count == 0)
+    {
+        <div class="empty-state py-4">Chưa có cơ sở phù hợp bộ lọc hiện tại.</div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Cơ sở &amp; Ảnh sân</th>
+                        <th>Chủ sở hữu</th>
+                        <th>Trạng thái</th>
+                        <th class="text-end">Thao tác</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var c in Model.OrderBy(c => c.TrangThaiDuyet == "CHO_DUYET" ? 0 : 1).ThenByDescending(c => c.Id))
+                    {
+                        var uploadedPhotos = c.Sans
+                            .SelectMany(s => s.HinhAnhSans.OrderByDescending(h => h.LaAnhDaiDien).ThenBy(h => h.ThuTuHienThi).Select(h => (s.TenSan, h.DuongDan)))
+                            .Take(4)
+                            .ToList();
+                        <tr>
+                            <td>
+                                <div class="fw-bold">@c.TenCoSo</div>
+                                <div class="small text-muted mb-1">@c.DiaChi</div>
+                                @if (uploadedPhotos.Count > 0)
+                                {
+                                    <div class="d-flex gap-1 flex-wrap mt-1">
+                                        @foreach (var ph in uploadedPhotos)
+                                        {
+                                            <a href="@ph.DuongDan" target="_blank" rel="noopener" title="Ảnh thực tế @ph.TenSan" class="sb-mini-thumb" style="width:52px;height:34px;">
+                                                <img src="@ph.DuongDan" alt="Ảnh sân @ph.TenSan" loading="lazy" />
+                                            </a>
+                                        }
+                                    </div>
+                                }
+                                else if (c.Sans.Count > 0)
+                                {
+                                    <div class="small text-muted">@c.Sans.Count sân · chưa tải ảnh thực tế</div>
+                                }
+                            </td>
+                            <td>
+                                <div class="fw-semibold">@c.ChuSoHuu.HoVaTen</div>
+                                <div class="small text-muted">@c.ChuSoHuu.SoDienThoai</div>
+                            </td>
+                            <td>
+                                <span class="sb-pill @(c.TrangThaiDuyet == "DA_DUYET" ? "sb-pill-success" : c.TrangThaiDuyet == "TU_CHOI" ? "sb-pill-danger" : "sb-pill-pending")">
+                                    @(c.TrangThaiDuyet == "DA_DUYET" ? "Đã duyệt" : c.TrangThaiDuyet == "TU_CHOI" ? "Đã từ chối" : "Chờ duyệt")
+                                </span>
+                            </td>
+                            <td class="text-end">
+                                <div class="d-inline-flex gap-2 flex-wrap justify-content-end">
+                                    @if (c.TrangThaiDuyet != "DA_DUYET")
+                                    {
+                                        <form asp-action="Review" method="post" class="m-0">
+                                            <input name="id" value="@c.Id" type="hidden" />
+                                            <input name="decision" value="DA_DUYET" type="hidden" />
+                                            <button class="btn btn-primary btn-sm">Duyệt cơ sở</button>
+                                        </form>
+                                    }
+                                    @if (c.TrangThaiDuyet != "TU_CHOI")
+                                    {
+                                        <form asp-action="Review" method="post" class="m-0" data-confirm="Từ chối cơ sở này? Cơ sở sẽ không được nhận đặt sân mới.">
+                                            <input name="id" value="@c.Id" type="hidden" />
+                                            <input name="decision" value="TU_CHOI" type="hidden" />
+                                            <button class="btn btn-outline-danger btn-sm">Từ chối</button>
+                                        </form>
+                                    }
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-6">
+        <div class="card p-4 h-100">
+            <h2 class="h6 mt-0 mb-1">Người dùng</h2>
+            <p class="small text-muted mb-3">Tìm tài khoản, xem trạng thái, khóa hoặc mở khóa.</p>
+            <div><a asp-action="Users" class="btn btn-outline-secondary btn-sm">Quản lý tài khoản</a></div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card p-4 h-100">
+            <h2 class="h6 mt-0 mb-1">Danh mục thể thao</h2>
+            <p class="small text-muted mb-3">Quản lý môn thể thao và loại sân trên toàn hệ thống.</p>
+            <div><a asp-controller="Catalog" asp-action="Index" class="btn btn-outline-secondary btn-sm">Mở danh mục</a></div>
+        </div>
+    </div>
+</div>
+
+<div class="sb-info-banner">
+    Cơ sở bị từ chối không được nhận đơn mới. Xác nhận quyết định trước khi thay đổi trạng thái.
+</div>

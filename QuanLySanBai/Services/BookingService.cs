@@ -12,7 +12,7 @@ public class BookingService(QuanLySanBaiContext db, IOptions<BookingOptions> opt
     public IQueryable<San> PublicCourts => db.Sans.AsNoTracking().Where(s=>s.DangHoatDong && s.CoSo.DangHoatDong && s.CoSo.TrangThaiDuyet=="DA_DUYET" && s.LoaiSan.MonTheThao.TrangThai);
     public async Task<CourtCalendar?> Calendar(long courtId, DateOnly date)
     {
-        var court=await PublicCourts.Include(s=>s.CoSo).Include(s=>s.LoaiSan).ThenInclude(t=>t.MonTheThao).SingleOrDefaultAsync(s=>s.Id==courtId);
+        var court=await PublicCourts.Include(s=>s.CoSo).Include(s=>s.LoaiSan).ThenInclude(t=>t.MonTheThao).Include(s=>s.HinhAnhSans).SingleOrDefaultAsync(s=>s.Id==courtId);
         if(court is null) return null;
         var now=await ServerNow(); var today=DateOnly.FromDateTime(now); var weekday=VietnamTime.Weekday(date);
         var hours=await db.LichHoatDongCoSos.AsNoTracking().SingleOrDefaultAsync(h=>h.CoSoId==court.CoSoId && h.ThuTrongTuan==weekday);

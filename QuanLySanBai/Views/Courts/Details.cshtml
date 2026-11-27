@@ -1,9 +1,12 @@
 @model QuanLySanBai.ViewModels.CourtCalendar
+@using QuanLySanBai.Services
 @{
     ViewData["Title"] = $"{Model.Court.TenSan} — Lịch và đặt sân";
     var walletBalance = ViewBag.WalletBalance as decimal?;
     var mySlotOrders = ViewBag.MySlotOrders as Dictionary<int, (long OrderId, string Status)> ?? new();
-    var today = QuanLySanBai.Services.VietnamTime.Today;
+    var gallery = CourtImageResolver.GalleryForCourt(Model.Court);
+    var hasRealPhotos = gallery.Any(g => g.IsRealPhoto);
+    var today = VietnamTime.Today;
     var quickDates = Enumerable.Range(0, 5).Select(i => today.AddDays(i)).ToList();
     var openCount = Model.Slots.Count(s => s.CanBook);
     string DayLabel(DateOnly d)
@@ -41,48 +44,76 @@
     <span class="booking-step">3. Nhận QR Check-in</span>
 </div>
 
-<div class="mb-3">
-    <h1 class="mb-1">@Model.Court.TenSan</h1>
-    <p class="text-muted mb-0">@Model.Court.CoSo.TenCoSo · @Model.Court.CoSo.DiaChi · <span class="badge bg-light text-dark border">@Model.Court.LoaiSan.MonTheThao.TenMon</span></p>
-</div>
-
-<div class="card p-3 mb-3">
-    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
-        <div>
-            <div class="small fw-semibold text-muted mb-2">Chọn ngày chơi</div>
-            <div class="date-strip">
-                @foreach (var d in quickDates)
+<div class="row g-4 mb-4 align-items-start">
+    <div class="col-lg-5">
+        <div class="sb-gallery-main is-zoomable" id="courtGalleryZoomTrigger" role="button" tabindex="0" aria-label="Phóng to ảnh sân">
+            <img id="courtGalleryMainImg" src="@gallery[0].Url" alt="@Model.Court.TenSan — @Model.Court.LoaiSan.TenLoai" />
+            <span class="sb-photo-source-tag @(hasRealPhotos ? "is-real" : "is-default")" id="courtGalleryTag">
+                @(hasRealPhotos ? $"Ảnh thực tế ({gallery.Count} ảnh) · Bấm để phóng to" : "Ảnh minh họa loại sân · Bấm để phóng to")
+            </span>
+        </div>
+        @if (gallery.Count > 1)
+        {
+            <div class="sb-gallery-thumbs" role="list" aria-label="Thư viện ảnh sân">
+                @for (int i = 0; i < gallery.Count; i++)
                 {
-                    <a asp-action="Details" asp-route-id="@Model.Court.Id" asp-route-date="@d.ToString("yyyy-MM-dd")"
-                       class="date-pill @(d == Model.Date ? "is-active" : "")">
-                        <small>@DayLabel(d)</small>
-                        <strong>@d.ToString("dd/MM")</strong>
-                    </a>
+                    <button type="button" class="sb-gallery-thumb @(i == 0 ? "is-active" : "")" data-gallery-idx="@i" data-gallery-src="@gallery[i].Url" data-gallery-label="@gallery[i].Label" aria-label="Xem @gallery[i].Label">
+                        <img src="@gallery[i].Url" alt="@gallery[i].Label" loading="lazy" />
+                    </button>
                 }
             </div>
-        </div>
-        <form method="get" class="d-flex align-items-end gap-2">
-            <input name="id" value="@Model.Court.Id" type="hidden" />
-            <div>
-                <label class="small fw-semibold text-muted d-block mb-1" for="datePicker">Ngày khác</label>
-                <input id="datePicker" name="date" type="date" class="form-control form-control-sm" value="@Model.Date.ToString("yyyy-MM-dd")" onchange="this.form.submit()" required />
-            </div>
-            <noscript><button class="btn btn-secondary btn-sm">Xem lịch</button></noscript>
-        </form>
+        }
     </div>
-    <div class="d-flex flex-wrap gap-3 mt-3 pt-2 border-top small text-muted">
-        <span><span class="status-dot bg-success"></span>Còn trống (@openCount)</span>
-        <span><span class="status-dot bg-warning"></span>Đang giữ chỗ</span>
-        <span><span class="status-dot bg-secondary"></span>Đã đặt / Chưa mở</span>
-        <span class="ms-md-auto">Giờ Việt Nam (UTC+7) · 00:00 là 24:00</span>
+    <div class="col-lg-7">
+        <div class="mb-3">
+            <span class="sb-pill sb-pill-info mb-2">@Model.Court.LoaiSan.MonTheThao.TenMon &bull; @Model.Court.LoaiSan.TenLoai</span>
+            <h1 class="mb-1">@Model.Court.TenSan</h1>
+            <p class="text-muted mb-1"><strong>@Model.Court.CoSo.TenCoSo</strong> &bull; @Model.Court.CoSo.DiaChi</p>
+            @if (!string.IsNullOrWhiteSpace(Model.Court.CoSo.SoDienThoaiHotline))
+            {
+                <p class="small text-muted mb-0">Hotline cơ sở: @Model.Court.CoSo.SoDienThoaiHotline · Mở cửa @Model.Court.CoSo.GioMoCua.ToString("HH:mm")–@(Model.Court.CoSo.GioDongCua == TimeOnly.MinValue ? "24:00" : Model.Court.CoSo.GioDongCua.ToString("HH:mm"))</p>
+            }
+        </div>
+
+        <div class="card p-3">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
+                <div>
+                    <div class="small fw-semibold text-muted mb-2">Chọn ngày chơi</div>
+                    <div class="date-strip">
+                        @foreach (var d in quickDates)
+                        {
+                            <a asp-action="Details" asp-route-id="@Model.Court.Id" asp-route-date="@d.ToString("yyyy-MM-dd")"
+                               class="date-pill @(d == Model.Date ? "is-active" : "")">
+                                <small>@DayLabel(d)</small>
+                                <strong>@d.ToString("dd/MM")</strong>
+                            </a>
+                        }
+                    </div>
+                </div>
+                <form method="get" class="d-flex align-items-end gap-2">
+                    <input name="id" value="@Model.Court.Id" type="hidden" />
+                    <div>
+                        <label class="small fw-semibold text-muted d-block mb-1" for="datePicker">Ngày khác</label>
+                        <input id="datePicker" name="date" type="date" class="form-control form-control-sm" value="@Model.Date.ToString("yyyy-MM-dd")" onchange="this.form.submit()" required />
+                    </div>
+                    <noscript><button class="btn btn-secondary btn-sm">Xem lịch</button></noscript>
+                </form>
+            </div>
+            <div class="d-flex flex-wrap gap-3 mt-3 pt-2 border-top small text-muted">
+                <span><span class="status-dot is-open"></span>Còn trống (@openCount)</span>
+                <span><span class="status-dot is-held"></span>Đang giữ chỗ</span>
+                <span><span class="status-dot is-closed"></span>Đã đặt / Chưa mở</span>
+                <span class="ms-md-auto">Giờ Việt Nam (UTC+7) · 00:00 là 24:00</span>
+            </div>
+        </div>
     </div>
 </div>
 
 @if (openCount == 0)
 {
-    <div class="alert alert-light border d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <div class="sb-soft-banner d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
         <span>Ngày <strong>@Model.Date.ToString("dd/MM/yyyy")</strong> hiện không còn khung giờ trống để đặt mới. Hãy chọn ngày khác ở phía trên.</span>
-        <a asp-action="Details" asp-route-id="@Model.Court.Id" asp-route-date="@Model.Date.AddDays(1).ToString("yyyy-MM-dd")" class="btn btn-sm btn-outline-primary">Xem ngày kế tiếp →</a>
+        <a asp-action="Details" asp-route-id="@Model.Court.Id" asp-route-date="@Model.Date.AddDays(1).ToString("yyyy-MM-dd")" class="btn btn-sm btn-primary">Xem ngày kế tiếp →</a>
     </div>
 }
 
@@ -91,27 +122,27 @@
     {
         var timeRange = $"{k.Start:HH\\:mm}–{(k.End == TimeOnly.MinValue ? "24:00" : k.End.ToString("HH:mm"))}";
         var hasMine = mySlotOrders.TryGetValue(k.SlotId, out var mine);
-        var cardClass = k.CanBook ? "is-open" : hasMine ? "is-mine" : "is-disabled";
+        var cardClass = k.CanBook ? "is-open sb-card-interactive" : hasMine ? "is-mine" : "is-disabled";
         <div class="col-md-6">
             <article class="slot-card @cardClass h-100 d-flex flex-column justify-content-between gap-2">
                 <div class="d-flex justify-content-between align-items-start gap-2">
                     <div>
-                        <h2 class="h5 mb-1">@timeRange</h2>
+                        <h2 class="h5 mt-0 mb-1">@timeRange</h2>
                         @if (hasMine)
                         {
-                            <span class="badge @(mine.Status == "DA_XAC_NHAN" ? "bg-success" : "bg-primary")">
-                                Đơn của bạn · @QuanLySanBai.Services.OrderLabels.Status(mine.Status)
+                            <span class="sb-pill @(mine.Status == "DA_XAC_NHAN" ? "sb-pill-success" : "sb-pill-info")">
+                                Đơn của bạn · @OrderLabels.Status(mine.Status)
                             </span>
                         }
                         else
                         {
-                            <span class="badge @(k.CanBook ? "bg-success" : k.Status == "Đang giữ chỗ" ? "bg-warning text-dark" : "bg-secondary")">@k.Status</span>
+                            <span class="sb-pill @(k.CanBook ? "sb-pill-success" : k.Status == "Đang giữ chỗ" ? "sb-pill-pending" : "sb-pill-neutral")">@k.Status</span>
                         }
                     </div>
                     <div class="text-end">
                         @if (k.Price.HasValue)
                         {
-                            <div class="fw-bold fs-5 @(k.CanBook ? "text-primary" : "text-muted")">@k.Price.Value.ToString("N0") đ</div>
+                            <div class="sb-price fs-4 @(k.CanBook ? "text-primary" : "text-muted")">@k.Price.Value.ToString("N0") đ</div>
                             <div class="small text-muted">Cọc từ @(k.Deposit?.ToString("N0") ?? "0") đ</div>
                         }
                         else
@@ -137,7 +168,7 @@
                         if (User.Identity?.IsAuthenticated == true)
                         {
                             <button type="button"
-                                    class="btn btn-success btn-sm w-100"
+                                    class="btn btn-primary btn-sm w-100"
                                     data-open-booking
                                     data-slot-id="@k.SlotId"
                                     data-time="@timeRange"
@@ -188,14 +219,14 @@
 
                     <div class="modal-header">
                         <div>
-                            <h2 class="modal-title h5 mb-0" id="bookingModalTitle">Xác nhận đặt sân</h2>
+                            <h2 class="modal-title h5 mt-0 mb-0" id="bookingModalTitle">Xác nhận đặt sân</h2>
                             <div class="small text-muted">@Model.Court.TenSan · @Model.Court.CoSo.TenCoSo</div>
                         </div>
                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button>
                     </div>
 
                     <div class="modal-body">
-                        <div class="p-3 rounded bg-light border mb-3">
+                        <div class="sb-summary-box mb-3">
                             <div class="d-flex justify-content-between small mb-1">
                                 <span class="text-muted">Ngày &amp; giờ chơi</span>
                                 <strong>@Model.Date.ToString("dd/MM/yyyy") · <span id="bmTime"></span></strong>
@@ -206,7 +237,7 @@
                             </div>
                             <div class="d-flex justify-content-between small">
                                 <span class="text-muted">Tiền cọc tối thiểu</span>
-                                <strong id="bmDepositText"></strong>
+                                <strong class="text-body" id="bmDepositText"></strong>
                             </div>
                         </div>
 
@@ -218,7 +249,7 @@
                                     <div class="flex-grow-1">
                                         <div class="d-flex justify-content-between align-items-center">
                                             <strong>Đặt cọc trước</strong>
-                                            <strong class="text-primary" id="bmScopeCocAmount"></strong>
+                                            <strong class="text-danger" id="bmScopeCocAmount"></strong>
                                         </div>
                                         <div class="small text-muted">Giữ sân chắc chắn, phần còn lại thanh toán sau tại sân hoặc online.</div>
                                     </div>
@@ -244,9 +275,9 @@
                                     <div class="flex-grow-1">
                                         <div class="d-flex justify-content-between align-items-center flex-wrap gap-1">
                                             <strong>Chuyển khoản VietQR</strong>
-                                            <span class="badge bg-primary-subtle text-primary border">Tự động xác nhận</span>
+                                            <span class="sb-pill sb-pill-info">Tự động xác nhận</span>
                                         </div>
-                                        <div class="small text-muted">Quét mã QR ngân hàng, đơn xác nhận ngay khi chuyển khoản.</div>
+                                        <div class="small text-muted">Quét mã QR ngân hàng, đơn xác nhận ngay khi hệ thống nhận giao dịch hợp lệ.</div>
                                     </div>
                                 </label>
 
@@ -255,7 +286,7 @@
                                     <div class="flex-grow-1">
                                         <div class="d-flex justify-content-between align-items-center flex-wrap gap-1">
                                             <strong>Ví của tôi (@bal.ToString("N0") đ)</strong>
-                                            <span class="badge" id="bmWalletBadge"></span>
+                                            <span class="sb-pill" id="bmWalletBadge"></span>
                                         </div>
                                         <div class="small text-muted" id="bmWalletHint"></div>
                                     </div>
@@ -266,7 +297,7 @@
                                     <div class="flex-grow-1">
                                         <div class="d-flex justify-content-between align-items-center flex-wrap gap-1">
                                             <strong>Thanh toán tại quầy</strong>
-                                            <span class="badge bg-light text-dark border">Giữ chỗ 15 phút</span>
+                                            <span class="sb-pill sb-pill-pending">Giữ chỗ có hạn</span>
                                         </div>
                                         <div class="small text-muted">Trả tiền mặt hoặc chuyển khoản trực tiếp cho nhân viên tại sân.</div>
                                     </div>
@@ -276,7 +307,7 @@
 
                         <div>
                             <label class="form-label small fw-semibold mb-1" for="bmNote">Ghi chú cho sân (không bắt buộc)</label>
-                            <input id="bmNote" name="Note" maxlength="1000" class="form-control form-control-sm" placeholder="Ví dụ: cần thuê thêm vợt, đến sớm 10 phút..." />
+                            <input id="bmNote" name="Note" maxlength="1000" class="form-control form-control-sm" placeholder="Ví dụ: Liên hệ trước khi đến..." />
                         </div>
                     </div>
 
@@ -290,9 +321,90 @@
     </div>
 }
 
+<div class="modal fade" id="courtLightboxModal" tabindex="-1" aria-labelledby="courtLightboxCaption" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content sb-lightbox-content">
+            <div class="modal-header border-0 pb-2">
+                <div class="small" id="courtLightboxCaption">@Model.Court.TenSan</div>
+                <div class="d-flex align-items-center gap-2 ms-auto">
+                    <span class="small opacity-75" id="courtLightboxCounter"></span>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Đóng"></button>
+                </div>
+            </div>
+            <div class="modal-body pt-0 text-center position-relative">
+                <img id="courtLightboxImg" src="@gallery[0].Url" alt="@Model.Court.TenSan" class="img-fluid rounded" style="max-height:72vh;object-fit:contain;" />
+                @if (gallery.Count > 1)
+                {
+                    <div class="d-flex justify-content-between mt-3">
+                        <button type="button" class="btn btn-sm btn-outline-light" id="courtLightboxPrev">‹ Trước</button>
+                        <button type="button" class="btn btn-sm btn-outline-light" id="courtLightboxNext">Sau ›</button>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
 @section Scripts {
     <script>
         (() => {
+            const mainImg = document.getElementById('courtGalleryMainImg');
+            const zoomTrigger = document.getElementById('courtGalleryZoomTrigger');
+            const thumbs = [...document.querySelectorAll('[data-gallery-src]')];
+            const items = thumbs.length > 0
+                ? thumbs.map(b => ({ src: b.dataset.gallerySrc, label: b.dataset.galleryLabel || '' }))
+                : (mainImg ? [{ src: mainImg.src, label: '@Model.Court.TenSan' }] : []);
+            let activeIdx = 0;
+
+            function setMainImage(idx) {
+                if (!mainImg || !items.length) return;
+                activeIdx = (idx + items.length) % items.length;
+                mainImg.style.opacity = '0.35';
+                setTimeout(() => {
+                    mainImg.src = items[activeIdx].src;
+                    mainImg.style.opacity = '1';
+                }, 90);
+                thumbs.forEach((b, i) => b.classList.toggle('is-active', i === activeIdx));
+            }
+
+            thumbs.forEach((btn, idx) => {
+                btn.addEventListener('click', () => setMainImage(idx));
+            });
+
+            const lbEl = document.getElementById('courtLightboxModal');
+            const lbImg = document.getElementById('courtLightboxImg');
+            const lbCap = document.getElementById('courtLightboxCaption');
+            const lbCnt = document.getElementById('courtLightboxCounter');
+            const lbPrev = document.getElementById('courtLightboxPrev');
+            const lbNext = document.getElementById('courtLightboxNext');
+
+            function syncLightbox() {
+                if (!lbImg || !items.length) return;
+                lbImg.src = items[activeIdx].src;
+                if (lbCap) lbCap.textContent = items[activeIdx].label || '@Model.Court.TenSan';
+                if (lbCnt) lbCnt.textContent = items.length > 1 ? `${activeIdx + 1} / ${items.length}` : '';
+            }
+
+            function openLightbox() {
+                if (!lbEl || !window.bootstrap || !items.length) return;
+                syncLightbox();
+                window.bootstrap.Modal.getOrCreateInstance(lbEl).show();
+            }
+
+            if (zoomTrigger) {
+                zoomTrigger.addEventListener('click', openLightbox);
+                zoomTrigger.addEventListener('keydown', e => {
+                    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openLightbox(); }
+                });
+            }
+            lbPrev?.addEventListener('click', () => { setMainImage(activeIdx - 1); syncLightbox(); });
+            lbNext?.addEventListener('click', () => { setMainImage(activeIdx + 1); syncLightbox(); });
+            lbEl?.addEventListener('keydown', e => {
+                if (items.length <= 1) return;
+                if (e.key === 'ArrowLeft') { setMainImage(activeIdx - 1); syncLightbox(); }
+                if (e.key === 'ArrowRight') { setMainImage(activeIdx + 1); syncLightbox(); }
+            });
+
             const modalEl = document.getElementById('bookingModal');
             const form = document.getElementById('bookingModalForm');
             if (!modalEl || !form || !window.bootstrap) return;
@@ -334,9 +446,7 @@
                 const due = scope === 'COC' ? currentDeposit : currentPrice;
                 const enough = walletBal >= due;
 
-                walletBadge.className = enough
-                    ? 'badge bg-success-subtle text-success border'
-                    : 'badge bg-warning-subtle text-warning-emphasis border';
+                walletBadge.className = enough ? 'sb-pill sb-pill-success' : 'sb-pill sb-pill-pending';
                 walletBadge.textContent = enough ? 'Đủ số dư' : 'Không đủ — tự tạo VietQR';
                 walletHint.textContent = enough
                     ? 'Trừ ngay ' + fmt(due) + ' từ ví và xác nhận đơn lập tức.'

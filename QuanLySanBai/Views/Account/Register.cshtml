@@ -1,13 +1,39 @@
 @model QuanLySanBai.ViewModels.RegisterModel
 @{ ViewData["Title"] = "Đăng ký"; }
-<h1>Đăng ký tài khoản</h1>
-<form method="post" class="col-md-6" id="registerForm">
-<div asp-validation-summary="All" class="text-danger" role="alert"></div>
-<partial name="_ProfileFields" model="Model" />
-<div class="mb-3"><label asp-for="Password"></label><input asp-for="Password" class="form-control" autocomplete="new-password" /><span asp-validation-for="Password" class="text-danger"></span></div>
-<div class="mb-3"><label asp-for="ConfirmPassword"></label><input asp-for="ConfirmPassword" class="form-control" autocomplete="new-password" /><span asp-validation-for="ConfirmPassword" class="text-danger"></span></div>
-<button type="submit" class="btn btn-primary">Đăng ký</button> <a asp-action="Login">Đã có tài khoản? Đăng nhập</a>
-</form>
+<div class="row g-4 align-items-stretch my-2">
+    <div class="col-lg-5">
+        <div class="sb-auth-hero">
+            <h1 class="display-6 fw-bold mb-3">Cùng nhau<br />ra sân.</h1>
+            <p class="text-muted mb-0">Tạo tài khoản nhanh để đặt sân, thanh toán VietQR / Ví và lưu mã QR Check-in trên điện thoại.</p>
+            <div class="sb-auth-accent-line"></div>
+            <div class="small fw-semibold text-muted">Bóng đá &bull; Cầu lông &bull; Tennis &bull; Bóng rổ &bull; Pickleball</div>
+        </div>
+    </div>
+    <div class="col-lg-7">
+        <div class="card p-4 p-md-5 h-100">
+            <h2 class="h3 mt-0 mb-1">Tạo tài khoản</h2>
+            <p class="text-muted small mb-4">Nhập thông tin cá nhân để bắt đầu đặt sân.</p>
+            <form method="post" id="registerForm">
+                <div asp-validation-summary="All" class="text-danger small mb-3" role="alert"></div>
+                <partial name="_ProfileFields" model="Model" />
+                <div class="mb-3">
+                    <label asp-for="Password" class="form-label fw-semibold small"></label>
+                    <input asp-for="Password" class="form-control" autocomplete="new-password" />
+                    <span asp-validation-for="Password" class="text-danger small"></span>
+                </div>
+                <div class="mb-4">
+                    <label asp-for="ConfirmPassword" class="form-label fw-semibold small"></label>
+                    <input asp-for="ConfirmPassword" class="form-control" autocomplete="new-password" />
+                    <span asp-validation-for="ConfirmPassword" class="text-danger small"></span>
+                </div>
+                <div class="d-grid gap-2">
+                    <button type="submit" class="btn btn-primary w-100">Đăng ký</button>
+                    <a asp-action="Login" class="btn btn-outline-secondary w-100">Đã có tài khoản? Đăng nhập</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 @section Scripts {
 <partial name="_ValidationScriptsPartial" />
 <script>

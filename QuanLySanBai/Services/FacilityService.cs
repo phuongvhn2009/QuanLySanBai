@@ -180,7 +180,10 @@ public class FacilityService(QuanLySanBaiContext db, RealtimeUpdates? updates = 
     {
         var facility = await RequirePriceAccess(actor, id);
         var isOwner = facility.ChuSoHuuId == actor;
-        var courts = await db.Sans.Where(s => s.CoSoId == id).Include(s => s.LoaiSan).ToListAsync();
+        var courts = await db.Sans.Where(s => s.CoSoId == id)
+            .Include(s => s.LoaiSan).ThenInclude(t => t.MonTheThao)
+            .Include(s => s.HinhAnhSans)
+            .ToListAsync();
         var slots = await db.KhungGioMacDinhs.Where(s => s.CoSoId == id).OrderBy(s => s.GioBatDau).ToListAsync();
         var hours = await db.LichHoatDongCoSos.Where(h => h.CoSoId == id).OrderBy(h => h.ThuTrongTuan).ToListAsync();
         var prices = await db.BangGia.Where(p => p.San.CoSoId == id).Include(p => p.KhungGio).Include(p => p.San).ToListAsync();

@@ -120,14 +120,23 @@ public class BookingsController(QuanLySanBaiContext db, BookingService service) 
         return RedirectToAction(nameof(Details), new { id });
     }
 
-    public async Task<IActionResult> Index() => View(await db.DonDatSans.AsNoTracking().Include(d => d.ChiTietDatSans).ThenInclude(c => c.San).Where(d => d.NguoiDungId == AccessService.UserId(User)).OrderByDescending(d => d.Id).Take(100).ToListAsync());
+    public async Task<IActionResult> Index() => View(await db.DonDatSans.AsNoTracking()
+        .Include(d => d.CoSo)
+        .Include(d => d.ChiTietDatSans).ThenInclude(c => c.San).ThenInclude(s => s.HinhAnhSans)
+        .Include(d => d.ChiTietDatSans).ThenInclude(c => c.San).ThenInclude(s => s.LoaiSan).ThenInclude(t => t.MonTheThao)
+        .Where(d => d.NguoiDungId == AccessService.UserId(User))
+        .OrderByDescending(d => d.Id)
+        .Take(100)
+        .ToListAsync());
 
     [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     public async Task<IActionResult> Details([FromServices] RefundService refunds, long id)
     {
         var userId = AccessService.UserId(User);
         var order = await db.DonDatSans.AsNoTracking()
-            .Include(d => d.ChiTietDatSans).ThenInclude(c => c.San)
+            .Include(d => d.CoSo)
+            .Include(d => d.ChiTietDatSans).ThenInclude(c => c.San).ThenInclude(s => s.LoaiSan).ThenInclude(t => t.MonTheThao)
+            .Include(d => d.ChiTietDatSans).ThenInclude(c => c.San).ThenInclude(s => s.HinhAnhSans)
             .Include(d => d.ChiTietDatSans).ThenInclude(c => c.ChinhSachHuyDoi).ThenInclude(p => p.MucPhiHuyDois)
             .Include(d => d.ThanhToanDons).ThenInclude(p => p.HoanTiens)
             .SingleOrDefaultAsync(d => d.Id == id && d.NguoiDungId == userId);

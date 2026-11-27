@@ -6,6 +6,7 @@ namespace QuanLySanBai.Data;
 public partial class QuanLySanBaiContext
 {
     public virtual DbSet<NhatKyWebhook> NhatKyWebhooks { get; set; } = null!;
+    public virtual DbSet<HinhAnhSan> HinhAnhSans { get; set; } = null!;
 
     partial void OnModelCreatingPartial(ModelBuilder modelBuilder)
     {
@@ -65,6 +66,33 @@ public partial class QuanLySanBaiContext
                 .WithMany(g => g.NhatKyWebhooks)
                 .HasForeignKey(e => e.GiaoDichCongId)
                 .HasConstraintName("FK_Nhat_Ky_Webhook_giao_dich_cong_id");
+        });
+
+        modelBuilder.Entity<HinhAnhSan>(entity =>
+        {
+            entity.ToTable("Hinh_Anh_San");
+            entity.HasKey(e => e.Id).HasName("PK_Hinh_Anh_San");
+
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.SanId).HasColumnName("san_id");
+            entity.Property(e => e.DuongDan).HasMaxLength(500).HasColumnName("duong_dan");
+            entity.Property(e => e.LaAnhDaiDien).HasColumnName("la_anh_dai_dien");
+            entity.Property(e => e.ThuTuHienThi).HasColumnName("thu_tu_hien_thi");
+            entity.Property(e => e.NgayTao).HasPrecision(0).HasColumnName("ngay_tao")
+                .HasDefaultValueSql("(dateadd(hour,(7),sysutcdatetime()))", "DF_Hinh_Anh_San_ngay_tao");
+            entity.Property(e => e.NgayCapNhat).HasPrecision(0).HasColumnName("ngay_cap_nhat")
+                .HasDefaultValueSql("(dateadd(hour,(7),sysutcdatetime()))", "DF_Hinh_Anh_San_ngay_cap_nhat");
+
+            entity.HasIndex(e => new { e.SanId, e.LaAnhDaiDien, e.ThuTuHienThi, e.Id }, "IX_Hinh_Anh_San_san_id_thu_tu");
+            entity.HasIndex(e => e.SanId, "UX_Hinh_Anh_San_san_id_dai_dien")
+                .IsUnique()
+                .HasFilter("([la_anh_dai_dien]=(1))");
+
+            entity.HasOne(e => e.San)
+                .WithMany(s => s.HinhAnhSans)
+                .HasForeignKey(e => e.SanId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_Hinh_Anh_San_san_id");
         });
 
         // Keep scaffold-generated files untouched. SQL OUTPUT is incompatible with these triggers.

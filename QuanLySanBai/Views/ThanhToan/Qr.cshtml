@@ -2,17 +2,21 @@
 @{
     ViewData["Title"] = $"Thanh toán QR {Model.PaymentCode}";
     var remainingSeconds = Math.Max(0, (int)(Model.ExpiresAt - Model.ServerNow).TotalSeconds);
+    var isOrderQr = !Model.IsWalletDeposit && Model.OrderId.HasValue;
 }
 
-<div class="mb-3">
+<div class="mb-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
     @if (Model.IsWalletDeposit)
     {
-        <a asp-controller="Wallet" asp-action="Index" class="btn btn-outline-secondary">← Ví của tôi</a>
+        <a asp-controller="Wallet" asp-action="Index" class="btn btn-outline-secondary btn-sm">← Ví của tôi</a>
     }
     else if (Model.OrderId.HasValue)
     {
-        <a asp-controller="Bookings" asp-action="Details" asp-route-id="@Model.OrderId.Value" class="btn btn-outline-secondary">← Chi tiết đơn @Model.MaDatSan</a>
+        <a asp-controller="Bookings" asp-action="Details" asp-route-id="@Model.OrderId.Value" class="btn btn-outline-secondary btn-sm">← Chi tiết đơn @Model.MaDatSan</a>
     }
+    <span class="sb-pill @(Model.Status == "THANH_CONG" ? "sb-pill-success" : Model.IsExpired ? "sb-pill-danger" : "sb-pill-pending")" id="statusBadge">
+        @(Model.Status == "THANH_CONG" ? "Đã thanh toán" : Model.IsExpired ? "QR đã hết hạn" : "Trạng thái: Chờ thanh toán")
+    </span>
 </div>
 
 @if (!Model.IsWalletDeposit)
@@ -26,19 +30,17 @@
     </div>
 }
 
-<h1>Chuyển khoản ngân hàng (VietQR)</h1>
-
 @if (!string.IsNullOrEmpty(Model.WarningMessage))
 {
     <div class="alert alert-warning">@Model.WarningMessage</div>
 }
 
-<div class="card p-4" id="qrCard" data-gateway-id="@Model.GatewayTxId" data-order-id="@Model.OrderId" data-status="@Model.Status">
+<div id="qrCard" data-gateway-id="@Model.GatewayTxId" data-order-id="@Model.OrderId" data-status="@Model.Status">
     @if (Model.Status == "THANH_CONG")
     {
-        <div class="alert alert-success">
-            <h2 class="h5 mb-1">Thanh toán đã được xác nhận thành công!</h2>
-            <p class="mb-2">Hệ thống đã tiếp nhận giao dịch từ ngân hàng và cập nhật trạng thái.</p>
+        <div class="card p-4 border-success">
+            <h1 class="h4 text-success mb-2">Thanh toán đã được xác nhận thành công!</h1>
+            <p class="text-muted mb-3">Hệ thống đã tiếp nhận giao dịch hợp lệ từ ngân hàng và cập nhật trạng thái đơn.</p>
             <div class="d-flex gap-2 flex-wrap">
                 @if (Model.OrderId.HasValue)
                 {
@@ -46,7 +48,7 @@
                 }
                 @if (Model.PaymentId.HasValue)
                 {
-                    <a asp-action="HoaDon" asp-route-id="@Model.PaymentId.Value" class="btn btn-outline-success">Xem &amp; In hóa đơn</a>
+                    <a asp-action="HoaDon" asp-route-id="@Model.PaymentId.Value" class="btn btn-outline-secondary">Xem &amp; In hóa đơn</a>
                 }
                 else if (Model.IsWalletDeposit)
                 {
@@ -57,9 +59,9 @@
     }
     else if (Model.Status is "THAT_BAI" or "DA_HUY")
     {
-        <div class="alert alert-danger mb-0">
-            <h2 class="h5 mb-1">Yêu cầu thanh toán này không còn hiệu lực (@Model.Status)</h2>
-            <p class="mb-2">Giao dịch đã bị hủy hoặc không thể khớp đơn đặt. Vui lòng không chuyển khoản theo mã QR này.</p>
+        <div class="card p-4 border-danger">
+            <h1 class="h4 text-danger mb-2">Yêu cầu thanh toán này không còn hiệu lực (@Model.Status)</h1>
+            <p class="text-muted mb-3">Giao dịch đã bị hủy hoặc không thể khớp đơn đặt. Vui lòng không chuyển khoản theo mã QR này.</p>
             @if (Model.OrderId.HasValue)
             {
                 <a asp-controller="Bookings" asp-action="Details" asp-route-id="@Model.OrderId.Value" class="btn btn-outline-danger">Quay lại chi tiết đơn</a>
@@ -72,45 +74,148 @@
     }
     else
     {
-        <div class="row g-4 align-items-center">
-            <div class="col-md-5 text-center">
-                @if (!string.IsNullOrEmpty(Model.QrImageUrl))
-                {
-                    <img src="@Model.QrImageUrl" alt="Mã QR VietQR chuyển khoản @Model.PaymentCode" class="img-fluid border rounded p-2 bg-white" style="max-width:300px;" />
-                }
-                else
-                {
-                    <div class="p-4 border rounded bg-light text-muted">Chưa cấu hình tài khoản ngân hàng để hiển thị ảnh QR.</div>
-                }
-            </div>
-            <div class="col-md-7">
-                <div class="mb-3">
-                    <span class="badge bg-warning text-dark fs-6" id="statusBadge">
-                        @(Model.IsExpired ? "QR đã hết hạn" : "Đang chờ thanh toán...")
-                    </span>
+        <!-- Bố cục 2 cột theo Figma 48:1053 (Thanh toán đặt cọc / VietQR) -->
+        <div class="row g-4 align-items-start">
+            <div class="col-lg-7">
+                <div class="card p-4">
+                    @if (isOrderQr)
+                    {
+                        <h1 class="h4 mt-0 mb-1">Xác nhận thông tin đặt sân</h1>
+                        <p class="small text-muted mb-3">Đơn <strong>@Model.MaDatSan</strong> · Mã giao dịch <code>@Model.PaymentCode</code></p>
+
+                        @if (!string.IsNullOrWhiteSpace(Model.TenCoSo))
+                        {
+                            <div class="fw-bold mb-1">@Model.TenCoSo · @Model.TenSan@(!string.IsNullOrWhiteSpace(Model.TenLoaiSan) ? $" · {Model.TenLoaiSan}" : "")</div>
+                        }
+                        @if (Model.NgaySuDung.HasValue && Model.GioBatDau.HasValue && Model.GioKetThuc.HasValue)
+                        {
+                            <div class="small text-muted mb-3">
+                                @Model.NgaySuDung.Value.ToString("dd/MM/yyyy") &bull; @Model.GioBatDau.Value.ToString("HH:mm") – @(Model.GioKetThuc.Value == TimeOnly.MinValue ? "24:00" : Model.GioKetThuc.Value.ToString("HH:mm"))
+                            </div>
+                        }
+
+                        <div class="eyebrow mb-2">CHI PHÍ ĐẶT SÂN</div>
+                        <div class="d-flex justify-content-between py-1">
+                            <span class="text-muted">Tổng tiền thuê sân</span>
+                            <strong>@Model.TongTienPhaiTra.ToString("N0") đ</strong>
+                        </div>
+                        @if (Model.DaThanhToan > 0)
+                        {
+                            <div class="d-flex justify-content-between py-1">
+                                <span class="text-muted">Đã thanh toán trước</span>
+                                <strong class="text-success">@Model.DaThanhToan.ToString("N0") đ</strong>
+                            </div>
+                        }
+                        <div class="d-flex justify-content-between py-2 align-items-baseline">
+                            <span class="fw-bold">Số tiền cần thanh toán ngay</span>
+                            <strong class="fs-5 text-danger">@Model.Amount.ToString("N0") đ</strong>
+                        </div>
+                        <div class="d-flex justify-content-between py-1">
+                            <span class="text-muted">Còn phải thanh toán sau (tại sân / online)</span>
+                            <strong>@Model.ConLaiSauGiaoDich.ToString("N0") đ</strong>
+                        </div>
+                        <hr class="my-3" />
+                        <p class="small text-muted mb-1">Lưu ý: Tiền cọc được trừ trực tiếp vào tổng tiền thuê. Bạn chỉ thanh toán phần còn lại tại sân hoặc online.</p>
+                        <p class="small text-muted mb-0">Chính sách hủy/đổi áp dụng theo thời điểm đặt sân.</p>
+                    }
+                    else
+                    {
+                        <h1 class="h4 mt-0 mb-1">Nạp tiền vào Ví điện tử</h1>
+                        <p class="small text-muted mb-3">Mã giao dịch: <code>@Model.PaymentCode</code></p>
+                        <div class="d-flex justify-content-between py-2 align-items-baseline">
+                            <span class="fw-bold">Số tiền nạp vào ví</span>
+                            <strong class="fs-4 text-danger">@Model.Amount.ToString("N0") đ</strong>
+                        </div>
+                        <hr class="my-3" />
+                        <p class="small text-muted mb-0">Số dư ví sẽ tự động cộng ngay sau khi hệ thống đối soát nhận giao dịch hợp lệ từ ngân hàng.</p>
+                    }
                 </div>
-                <table class="table table-sm mb-3">
-                    <tr><th class="text-muted" style="width:40%;">Ngân hàng</th><td><strong>@Model.BankName (@Model.BankCode)</strong></td></tr>
-                    <tr><th class="text-muted">Số tài khoản</th><td><strong>@(string.IsNullOrEmpty(Model.AccountNumber) ? "(Chưa cấu hình)" : Model.AccountNumber)</strong></td></tr>
-                    <tr><th class="text-muted">Chủ tài khoản</th><td><strong>@(string.IsNullOrEmpty(Model.AccountName) ? "(Chưa cấu hình)" : Model.AccountName)</strong></td></tr>
-                    <tr><th class="text-muted">Số tiền chính xác</th><td><strong class="text-danger fs-5">@Model.Amount.ToString("N0") đ</strong></td></tr>
-                    <tr><th class="text-muted">Nội dung chuyển khoản</th><td><strong class="text-primary fs-5" id="transferContent">@Model.TransferContent</strong> <button type="button" class="btn btn-sm btn-outline-secondary ms-2" onclick="navigator.clipboard?.writeText('@Model.TransferContent'); this.textContent='Đã sao chép!'; setTimeout(() => this.textContent='Sao chép', 1500);">Sao chép</button></td></tr>
-                </table>
+            </div>
 
-                @if (!Model.IsExpired)
-                {
-                    <div class="alert alert-info py-2">
-                        Mã QR còn hiệu lực: <strong id="qrCountdown" data-seconds="@remainingSeconds"></strong>
+            <div class="col-lg-5">
+                <div class="card p-4">
+                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-1">
+                        <h2 class="h4 mt-0 mb-0">Quét mã QR để thanh toán</h2>
+                        @if (!Model.IsExpired)
+                        {
+                            <span class="sb-pill sb-pill-info"><span class="sb-live-dot" aria-hidden="true"></span>Chờ xác nhận</span>
+                        }
                     </div>
-                }
-                else
-                {
-                    <div class="alert alert-warning py-2">
-                        Mã QR đã quá thời hạn hiển thị. Nếu bạn đã chuyển khoản, hệ thống sẽ đối soát tự động khi nhận được webhook từ ngân hàng.
+                    <div class="small text-muted">Số tiền chuyển khoản</div>
+                    <div class="d-flex align-items-center gap-2 flex-wrap mb-3">
+                        <span class="fs-2 fw-bold text-danger">@Model.Amount.ToString("N0") đ</span>
+                        <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2" style="min-height:28px;"
+                                onclick="navigator.clipboard?.writeText('@((long)Model.Amount)'); this.textContent='✓ Đã chép'; setTimeout(() => this.textContent='Sao chép', 1500);">
+                            Sao chép
+                        </button>
                     </div>
-                }
 
-                <p class="text-muted small mb-0">Vui lòng giữ nguyên số tiền và nội dung chuyển khoản <strong>@Model.TransferContent</strong>. Trang này sẽ tự động cập nhật ngay khi ngân hàng báo có (không cần tải lại trang).</p>
+                    <div class="mb-3">
+                        @if (!string.IsNullOrEmpty(Model.QrImageUrl))
+                        {
+                            <div class="d-inline-block bg-white p-2 border rounded" style="border-radius:8px!important;">
+                                <img src="@Model.QrImageUrl" alt="Mã QR VietQR chuyển khoản @Model.PaymentCode" class="img-fluid" style="max-width:230px;" />
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="p-4 border rounded bg-light text-muted small">Chưa cấu hình tài khoản ngân hàng để hiển thị ảnh QR.</div>
+                        }
+                    </div>
+
+                    <div class="fw-bold small mb-2">Thông tin chuyển khoản</div>
+                    <div class="small text-muted">Ngân hàng / Tài khoản</div>
+                    <div class="fw-bold mb-2">
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                            <span>@Model.BankName (@Model.BankCode) · @(string.IsNullOrEmpty(Model.AccountNumber) ? "(Chưa cấu hình)" : Model.AccountNumber)</span>
+                            @if (!string.IsNullOrEmpty(Model.AccountNumber))
+                            {
+                                <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2" style="min-height:28px;"
+                                        onclick="navigator.clipboard?.writeText('@Model.AccountNumber'); this.textContent='✓ Đã chép'; setTimeout(() => this.textContent='Sao chép STK', 1500);">
+                                    Sao chép STK
+                                </button>
+                            }
+                        </div>
+                        @if (!string.IsNullOrEmpty(Model.AccountName))
+                        {
+                            <div class="small text-muted fw-normal">@Model.AccountName</div>
+                        }
+                    </div>
+
+                    <div class="small text-muted">Nội dung chuyển khoản</div>
+                    <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
+                        <strong class="text-primary fs-6" id="transferContent">@Model.TransferContent</strong>
+                        <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2" style="min-height:28px;"
+                                onclick="navigator.clipboard?.writeText('@Model.TransferContent'); this.textContent='✓ Đã chép'; setTimeout(() => this.textContent='Sao chép', 1500);">
+                            Sao chép
+                        </button>
+                    </div>
+                    <p class="small text-muted mb-2">Vui lòng giữ nguyên nội dung để hệ thống đối soát giao dịch tự động.</p>
+                    @if (!Model.IsExpired)
+                    {
+                        <div class="sb-info-banner py-2 mb-3 d-flex align-items-center gap-2">
+                            <span class="sb-live-dot" aria-hidden="true"></span>
+                            <span>Đang tự động chờ ngân hàng xác nhận — không cần tải lại trang.</span>
+                        </div>
+                    }
+
+                    @if (!Model.IsExpired)
+                    {
+                        <div class="fw-bold text-danger mb-2">
+                            Thời gian giữ chỗ còn lại: <span id="qrCountdown" data-seconds="@remainingSeconds">--:--</span>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="alert alert-warning py-2 small mb-2">
+                            Mã QR đã quá thời hạn hiển thị. Nếu bạn đã chuyển khoản, hệ thống sẽ đối soát tự động khi nhận được webhook từ ngân hàng.
+                        </div>
+                    }
+
+                    <p class="small text-muted mb-0">
+                        Chỉ xác nhận đơn khi hệ thống nhận được giao dịch hợp lệ. Không tự đánh dấu đã thanh toán chỉ dựa trên ảnh chụp.
+                    </p>
+                </div>
             </div>
         </div>
     }
@@ -129,7 +234,7 @@
                 function tick() {
                     const left = Math.max(0, Math.ceil((deadline - performance.now()) / 1000));
                     countdownEl.textContent = left > 0
-                        ? Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0')
+                        ? String(Math.floor(left / 60)).padStart(2, '0') + ':' + String(left % 60).padStart(2, '0')
                         : 'Đã hết hạn';
                 }
                 tick();

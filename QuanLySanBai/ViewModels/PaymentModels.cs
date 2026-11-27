@@ -118,6 +118,16 @@ public class ThanhToanQrVM
     public long? PaymentId { get; set; }
     public bool SePayConfigured { get; set; }
     public string? WarningMessage { get; set; }
+    public string? TenCoSo { get; set; }
+    public string? TenSan { get; set; }
+    public string? TenLoaiSan { get; set; }
+    public DateOnly? NgaySuDung { get; set; }
+    public TimeOnly? GioBatDau { get; set; }
+    public TimeOnly? GioKetThuc { get; set; }
+    public decimal TongTienPhaiTra { get; set; }
+    public decimal TienCocYeuCau { get; set; }
+    public decimal DaThanhToan { get; set; }
+    public decimal ConLaiSauGiaoDich => Math.Max(0m, TongTienPhaiTra - DaThanhToan - (Status == "THANH_CONG" ? 0m : Amount));
 }
 
 public class ThanhToanTienMatVM
